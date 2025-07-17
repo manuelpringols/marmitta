@@ -1,7 +1,7 @@
 # Marmitta
 
-🚀 **Script Selector**  
-Uno script bash interattivo per esplorare, scaricare ed eseguire facilmente gli script presenti in un repository GitHub remoto, con supporto per la selezione tramite `fzf`.
+🚀 **marmitta**  
+Marmitta è uno script bash interattivo per esplorare, scaricare ed eseguire facilmente gli script presenti in un repository GitHub remoto, con supporto per la selezione tramite `fzf`.
 
 ---
 
