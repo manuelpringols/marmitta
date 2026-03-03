@@ -1,0 +1,60 @@
+# Path to your Oh My Zsh installation.
+export ZSH="$HOME/.oh-my-zsh"
+
+# Tema Oh My Zsh
+ZSH_THEME="robbyrussell"
+
+# Plugin Oh My Zsh
+plugins=(git zsh-syntax-highlighting zsh-autosuggestions)
+
+# Carica oh-my-zsh e i plugin
+source $ZSH/oh-my-zsh.sh
+
+# Personalizza colori dopo aver caricato il plugin
+ZSH_HIGHLIGHT_STYLES[path]='fg=cyan,bold'
+
+# --- Configurazione personalizzata prompt ---
+configure_prompt() {
+    prompt_symbol=💀
+    local venv_name=""
+
+    # Se è attivo un virtualenv, prendiamo solo il nome della cartella
+    if [[ -n "$VIRTUAL_ENV" ]]; then
+        venv_name="(%F{magenta}$(basename "$VIRTUAL_ENV"))"
+    fi
+
+    case "$PROMPT_ALTERNATIVE" in
+        twoline)
+            PROMPT=$'%F{magenta}╭──'"$venv_name"'(%B%F{15}%n'"$prompt_symbol"$'%m%b%F{magenta})-[%B%F{reset}%(6~.%-1~/%4~.%5~)%b%F{magenta}]
+╰─%B%(#.%F{15}#.%F{15}$)%b%F{reset} '
+            ;;
+        oneline)
+            PROMPT="$venv_name"'%B%F{red}%n@%m%b%F{reset}:%B%F{green}%~%b%F{reset}%(#.#.$) '
+            RPROMPT=
+            ;;
+        backtrack)
+            PROMPT="$venv_name"'%B%F{magenta}%n@%m%b%F{reset}:%B%F{blue}%~%b%F{reset}%(#.#.$) '
+            RPROMPT=
+            ;;
+    esac
+
+    unset prompt_symbol
+}
+
+PROMPT_ALTERNATIVE=twoline
+configure_prompt
+export PROMPT
+
+# Abilita completamento
+autoload -Uz compinit && compinit
+
+# ASCII Art (opzionale)
+[ -f ~/frames/spongebob_ascii.sh ] && bash ~/frames/spongebob_ascii.sh
+
+
+echo -------------------------------------------------------------------
+
+
+# System info
+neofetch
+

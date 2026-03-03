@@ -1,0 +1,9 @@
+pitonzi/README.md                          # Documentazione del progetto pitonzi
+pitonzi/check_eb_stealth/check_eb_stealth.py  # Script Python per il controllo stealth di EB (verifica sicurezza o diagnostica)
+pitonzi/check_system_v2/check_system_v2.py    # Script Python versione 2 per il controllo dello stato di sistema
+pitonzi/find_file/find_file.py                # Script Python per la ricerca di file nel filesystem
+pitonzi/minaccia/lista/                      # Cartella contenente liste di dati o definizioni di minacce
+pitonzi/minaccia/minaccia.py                 # Script Python per gestione o analisi minacce
+pitonzi/minaccia/scan_report.pdf             # Report PDF generato dalla scansione minacce
+pitonzi/ocr_interactive/ocr_interactive.py   # Script Python per OCR interattivo con input utente
+pitonzi/testina/                            # Cartella testina (contenuto non specificato; aggiungi descrizione se necessario)
