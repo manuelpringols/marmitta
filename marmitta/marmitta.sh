@@ -1,496 +1,516 @@
 #!/bin/bash
 
-print_red() {
-  echo -e "\033[0;31m$1\033[0m"
-}
+# ╔══════════════════════════════════════════════════════════════╗
+# ║                 MARMITTA - Script Launcher                   ║
+# ║          github.com/manuelpringols/scripts                   ║
+# ╚══════════════════════════════════════════════════════════════╝
 
-check_internet_connection() {
-  if ! ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
-    print_red "❌ Connessione Internet assente. Marmitta richiede una connessione attiva."
-    exit 0
-  fi
-}
-
-check_internet_connection
-
-# 🎨 COLORI
+# ─────────────────────────────────────────────────────────────
+# COLORI (palette centralizzata — non ricopiare in ogni funzione)
+# ─────────────────────────────────────────────────────────────
+RED='\e[38;5;160m'
+DARK_RED='\e[38;5;52m'
+BLOOD_RED='\e[38;5;124m'
+BLACK_PITCH='\e[38;5;234m'
+GREEN_NEON='\033[1;92m'
+GREEN_TOXIC='\033[0;92m'
+GREEN_DARK='\033[0;32m'
+GREEN_SLIME='\033[1;32m'
 BLUE="\033[1;34m"
 GREEN="\e[92m"
 CYAN="\e[96m"
 YELLOW="\e[93m"
 MAGENTA="\e[95m"
 BOLD="\e[1m"
-
-ORANGE="\e[38;5;208m"    # arancione (color code 208)
-PURPLE="\e[35m"          # viola (magenta più scuro)
-LIGHT_GRAY="\e[37m"      # grigio chiaro
-DARK_GRAY="\e[90m"       # grigio scuro
-RED='\e[38;5;160m'       # rosso sangue vivo ma meno brillante del 203
-DARK_RED='\e[38;5;52m'   # rosso scuro bordeaux
-BLOOD_RED='\e[38;5;124m' # rosso sangue scuro
-BLACK='\e[30m'           # nero per contorno o schizzi
+ORANGE="\e[38;5;208m"
+PURPLE="\e[35m"
+DARK_GRAY="\e[90m"
 RESET='\e[0m'
-BLACK_PITCH='\e[38;5;234m' # nero molto scuro, ma visibile su terminale nero
 
-GREEN_NEON='\033[1;92m'
-GREEN_TOXIC='\033[0;92m'
-GREEN_DARK='\033[0;32m'
-GREEN_SLIME='\033[1;32m'
+# ─────────────────────────────────────────────────────────────
+# COSTANTI
+# ─────────────────────────────────────────────────────────────
+MARMITTA_CONFIG_DIR="$HOME/.config/marmitta"
+MARMITTA_CONFIG_FILE="$MARMITTA_CONFIG_DIR/config"
+MARMITTA_LAST_SCRIPT="$HOME/.marmitta_last_script"
+MARMITTA_INSTALL_PATH="/usr/local/bin/marmitta"
 
-NC="\033[0m" # No Color
+# Variabili che vengono popolate da load_config / ensure_config
+GITHUB_USER=""
+GITHUB_TOKEN=""
+DEFAULT_BRANCH="master"
+REPO_API_URL=""
+BASE_URL=""
+AUTH_HEADER=()
+SCRIPT_DESCS=""
 
-BASE_URL="https://raw.githubusercontent.com/manuelpringols/scripts/master/"
+# ─────────────────────────────────────────────────────────────
+# UTILITY PRINT
+# ─────────────────────────────────────────────────────────────
+print_ok()      { echo -e "${GREEN}✅ $1${RESET}"; }
+print_warn()    { echo -e "${YELLOW}⚠️  $1${RESET}"; }
+print_err()     { echo -e "${RED}❌ $1${RESET}"; }
+print_info()    { echo -e "${CYAN}ℹ️  $1${RESET}"; }
+print_step()    { echo -e "${MAGENTA}➡️  $1${RESET}"; }
 
-# URL diretto del file raw su GitHub (modifica con il tuo file)
-REMOTE_URL="https://raw.githubusercontent.com/manuelpringols/scripts/master/marmitta/marmitta.sh"
-sleep 1
-
-if [[ "$1" == "--login" ]]; then
-  echo "➡️ Avvio login da marmitta_login.sh remoto..."
-  curl -s -o /tmp/marmitta_login.sh https://raw.githubusercontent.com/manuelpringols/scripts/master/marmitta/marmitta_login.sh
-  chmod +x /tmp/marmitta_login.sh
-  /tmp/marmitta_login.sh
-  exit 0
-fi
-
-# Percorso del file locale
-LOCAL_FILE="$(which marmitta)"
-
-function call_pitonzi() {
-
-  echo -e "${RED}██████╗ ${BLOOD_RED}██╗████████╗ $ ${GREEN_NEON} ██████╗ ${GREEN_TOXIC}███╗   ██╗${RED}███████╗${RESET}     ${BLOOD_RED}██${GREEN_SLIME}██████${RESET}"
-  sleep 0.05
-  echo -e "${DARK_RED}██╔══██╗${RED}██║╚══██╔══╝ ${GREEN_SLIME} ██╔═══██╗${GREEN_NEON}████╗  ██║${DARK_RED}██╔════╝${RESET}  ${BLOOD_RED}██${GREEN_SLIME}╚══███${RESET}"
-  sleep 0.05
-  echo -e "${RED}██████╔╝${BLOOD_RED}██║   ██║     ${GREEN_TOXIC}██║   ██║${GREEN_SLIME}██╔██╗ ██║${RED}█████╗  ${RESET}     ${BLOOD_RED}██${GREEN_NEON}  ███╔╝${RESET}"
-  sleep 0.05
-  echo -e "${DARK_RED}██╔═══╝ ${RED}██║   ██║     ${GREEN_TOXIC}██║   ██║${GREEN_DARK}██║╚██╗██║${RED}██╔══╝  ${RESET}       ${BLOOD_RED}██${GREEN_TOXIC} ███╔╝ ${RESET}"
-  sleep 0.05
-  echo -e "${RED}██║     ${BLOOD_RED}██║   ██║   ${GREEN_SLIME}╚██████╔╝${GREEN_TOXIC}██║ ╚████║${GREEN_NEON}██║${RESET}     ${BLOOD_RED}██${GREEN_SLIME}███████╗${RESET}"
-  sleep 0.05
-  echo -e "${DARK_RED}╚═╝     ${BLACK_PITCH}╚═╝   ╚═╝   ${GREEN_DARK}╚══════╝ ${BLACK_PITCH}╚═════╝ ${GREEN_DARK}╚═╝  ╚═══╝${GREEN_SLIME}╚═╝${RESET}        ${BLOOD_RED}╚═╝${GREEN_TOXIC}╚══════╝${RESET}"
-  sleep 0.1
-  echo -e ""
-  echo -e "${GREEN_NEON}▀▀▀${RESET} ${GREEN_SLIME}█▀▀▀█${GREEN_TOXIC}   ${GREEN_DARK}PITONZI   ${GREEN_DARK}█▄▄▄█${GREEN_NEON} ▀▀▀${RESET}"
-  sleep 0.1
-
-  local BASE_URL="https://raw.githubusercontent.com/manuelpringols/scripts/master"
-  local URL_FULL="${BASE_URL}/pitonzi/run_pitonzi.sh"
-  # Scarica lo script in un file temporaneo
-  temp_script=$(mktemp)
-  curl -fsSL "$URL_FULL" -o "$temp_script"
-  chmod +x "$temp_script"
-
-  # Esegui lo script **direttamente**, così mantiene stdin e tty
-  bash "$temp_script"
-
-  # Rimuovi lo script temporaneo
-  rm -f "$temp_script"
-}
-
-if [[ "$1" == "-py" ]]; then
-  shift
-  call_pitonzi "$@"
-  exit 0
-fi
-
-function slither_psuh() {
-
-  local BASE_URL="https://raw.githubusercontent.com/manuelpringols/scripts/master"
-  local URL_FULL="${BASE_URL}/init_git_repo/slither_push_repo.sh"
-  sh -c "$(curl -fsSL ${URL_FULL})" -- "$@"
-}
-
-if [[ "$1" == "-Gsp" ]]; then
-  shift             # Rimuove -Gsp dagli argomenti
-  slither_psuh "$@" # Passa tutti gli altri argomenti
-  exit 0
-fi
-
-function update_marmitta() {
-  local BASE_URL="https://raw.githubusercontent.com/manuelpringols/scripts/master"
-  local URL_FULL="${BASE_URL}/marmitta/marmitta_update.sh"
-  curl -fsSL "$URL_FULL" | bash
-}
-
-if [[ "$1" == "-u" ]]; then
-  update_marmitta
-  exit 0
-fi
-
-if [[ "$1" == "-l" || "$1" == "--last" ]]; then
-  LAST_SCRIPT=$(cat ~/.marmitta_last_script 2>/dev/null)
-  if [[ -z "$LAST_SCRIPT" ]]; then
-    echo "❌ Nessuno script eseguito precedentemente."
+# ─────────────────────────────────────────────────────────────
+# INTERNET CHECK
+# ─────────────────────────────────────────────────────────────
+check_internet() {
+  if ! ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+    print_err "Connessione Internet assente. Marmitta richiede una connessione attiva."
     exit 1
   fi
-
-  echo "▶️ Rieseguo l'ultimo script:"
-  echo "$LAST_SCRIPT"
-  bash -c "$(curl -fsSL "$LAST_SCRIPT")"
-  exit 0
-fi
-
-function print_help() {
-  echo -e "${BLUE}m${YELLOW}a${MAGENTA}r${CYAN}m${GREEN}i${PURPLE}t${ORANGE}t${DARK_GRAY}a${RESET} - launcher di script shell"
-  echo ""
-  echo -e "${YELLOW}Opzioni:${RESET}"
-  echo -e "  ${CYAN}-l${RESET}        Riesegue l'ultimo script"
-  echo -e "  ${MAGENTA}-t${RESET}        Mostra struttura script e repo"
-  echo -e "  ${RED}-h${RESET}        Mostra questa guida"
-  echo -e "  ${GREEN}-u${RESET}        Esegue l'aggiornamento richiamando marmitta_update.sh"
-  echo -e "  ${ORANGE}-Gsp${RESET}      Esegue lo script slither_push.sh per pushare velocemente su git"
-  echo -e "  ${CYAN}-py${RESET}       Launcher equivalente a marmitta ma per script Python"
-  echo -e "  ${PURPLE}--login${RESET}    Esegue il login Bitwarden per salvare il GitHub token in locale (richiede BW CLI configurato)"
-  echo ""
-  echo -e "⚠️ ${YELLOW}Monitum amicum:${RESET}\nAntequam chaos excitare coneris, semper conare exsequi scriptum cum parametro \`-h\` ut intellegas quid agat! 😜✨\n\nMelius praecavere quam curare! 😉"
-  echo ""
 }
 
-if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-  print_help
-  exit 0
-fi
-
-function print_tree() {
-  echo -e "${MAGENTA}📁 git_scripts${RESET}"
-
-  echo -e "${MAGENTA}├── accendi_pc${RESET}"
-  echo -e "│   ├── ${YELLOW}accendi_pc-pisso.sh${RESET}          ${WHITE}→ Accensione PC fisso remoto${RESET}"
-  echo -e "│   ├── ${YELLOW}accendi_pc.sh${RESET}                ${WHITE}→ Accensione PC principale${RESET}"
-  echo -e "│   ├── ${YELLOW}spegni_pc_fisso.sh${RESET}           ${WHITE}→ Spegnimento PC fisso remoto${RESET}"
-  echo -e "│   └── ${YELLOW}spegni_pc.sh${RESET}                 ${WHITE}→ Spegnimento PC principale${RESET}"
-
-  echo -e "${MAGENTA}├── arch_install'l${RESET}"
-  echo -e "│   └── ${YELLOW}arch-install'l.sh${RESET}            ${WHITE}→ Script installazione Arch Linux${RESET}"
-
-  echo -e "${MAGENTA}├── init_git_repo${RESET}"
-  echo -e "│   ├── ${YELLOW}init_git_repo.sh${RESET}             ${WHITE}→ Inizializza repo Git${RESET}"
-  echo -e "│   └── ${YELLOW}slither_push_repo.sh${RESET}         ${WHITE}→ Push rapido con commit auto${RESET}"
-
-  echo -e "${MAGENTA}├── install-dev-tools${RESET}"
-  echo -e "│   └── ${YELLOW}install-dev-tools.sh${RESET}         ${WHITE}→ Installa tool di sviluppo base${RESET}"
-
-  echo -e "${MAGENTA}├── marmitta${RESET}"
-  echo -e "│   ├── ${YELLOW}marmitta.sh${RESET}                  ${WHITE}→ Launcher principale script (con menu)${RESET}"
-  echo -e "│   └── ${YELLOW}marmitta_update.sh${RESET}           ${WHITE}→ Auto-update dello script marmitta${RESET}"
-
-  echo -e "${MAGENTA}├── pitonzi${RESET}"
-  echo -e "│   ├── ${YELLOW}resolve_deps.py${RESET}              ${WHITE}→ Risolve automaticamente dipendenze Python${RESET}"
-  echo -e "│   └── ${YELLOW}run_pitonzi.sh${RESET}               ${WHITE}→ Esegue script Python con venv temporaneo${RESET}"
-
-  echo -e "${MAGENTA}├── scp_send${RESET}"
-  echo -e "│   └── ${YELLOW}scp_send.sh${RESET}                  ${WHITE}→ Invia file via SCP in modo semplice${RESET}"
-
-  echo -e "${MAGENTA}├── service_command${RESET}"
-  echo -e "│   └── ${YELLOW}shutdown_service.sh${RESET}          ${WHITE}→ Termina servizi specifici${RESET}"
-
-  echo -e "${MAGENTA}├── setup_vpn${RESET}"
-  echo -e "│   ├── config/"
-  echo -e "│   │   ├── ${YELLOW}initialize_script_vpn.sh${RESET}     ${WHITE}→ Inizializza configurazione VPN${RESET}"
-  echo -e "│   │   ├── ${YELLOW}requirements.txt${RESET}            ${WHITE}→ Dipendenze Python VPN${RESET}"
-  echo -e "│   │   └── ${YELLOW}script_vpn.py${RESET}               ${WHITE}→ Script Python per VPN${RESET}"
-  echo -e "│   └── ${YELLOW}start_vpn_setups.sh${RESET}          ${WHITE}→ Avvia configurazioni VPN${RESET}"
-
-  echo -e "${MAGENTA}├── setup_wezterm${RESET}"
-  echo -e "│   └── ${YELLOW}setup_wezterm.sh${RESET}             ${WHITE}→ Setup iniziale per WezTerm${RESET}"
-
-  echo -e "${MAGENTA}├── setup_zshrc${RESET}"
-  echo -e "│   ├── ${YELLOW}setup_zshrc.sh${RESET}               ${WHITE}→ Setup shell ZSH personalizzata${RESET}"
-  echo -e "│   └── ${YELLOW}spinal/${RESET}                      ${WHITE}→ Config extra ZSH (non specificata)${RESET}"
-
-  echo -e "${MAGENTA}├── spongebob_frames${RESET}"
-  echo -e "│   └── ${YELLOW}frames/${RESET}                      ${WHITE}→ Cartella con frame SpongeBob (ASCII/video?)${RESET}"
-
-  echo -e "${MAGENTA}├── system_report${RESET}"
-  echo -e "│   ├── ${YELLOW}check_fs.sh${RESET}                  ${WHITE}→ Controllo file system${RESET}"
-  echo -e "│   ├── ${YELLOW}check_security_problems.sh${RESET}  ${WHITE}→ Verifica problemi di sicurezza${RESET}"
-  echo -e "│   ├── ${YELLOW}high_consumption_processes.sh${RESET} ${WHITE}→ Processi a elevato consumo${RESET}"
-  echo -e "│   └── ${YELLOW}system_report.sh${RESET}             ${WHITE}→ Genera report completo del sistema${RESET}"
-
-  echo -e "${MAGENTA}├── update-spring-boot-keystore${RESET}"
-  echo -e "│   └── ${YELLOW}update-spring-boot-keystore.sh${RESET} ${WHITE}→ Aggiorna il keystore di un'app Spring Boot${RESET}"
-
-  echo -e "${MAGENTA}└── README.md${RESET}                      ${WHITE}→ Documentazione generale repo${RESET}"
+# ─────────────────────────────────────────────────────────────
+# CONFIG — carica, crea interattivo, valida
+# ─────────────────────────────────────────────────────────────
+load_config() {
+  # shellcheck source=/dev/null
+  [[ -f "$MARMITTA_CONFIG_FILE" ]] && source "$MARMITTA_CONFIG_FILE"
 }
 
-if [[ "$1" == "-t" || "$1" == "--tree" ]]; then
-  print_tree
-  exit 0
-fi
+setup_config() {
+  echo -e "\n${CYAN}${BOLD}⚙️  Setup di Marmitta${RESET}\n"
+  mkdir -p "$MARMITTA_CONFIG_DIR"
 
-# 🔍 Controllo e installazione jq e fzf
-install_dependencies() {
-  missing=()
-  for cmd in jq fzf; do
-    if ! command -v "$cmd" &>/dev/null; then
-      missing+=("$cmd")
-    fi
+  local github_user github_token default_branch
+
+  read -rp "$(echo -e "${YELLOW}👤 GitHub username: ${RESET}")" github_user
+  while [[ -z "$github_user" ]]; do
+    print_err "Username obbligatorio."
+    read -rp "$(echo -e "${YELLOW}👤 GitHub username: ${RESET}")" github_user
   done
 
-  if [ ${#missing[@]} -eq 0 ]; then
-    return 0
+  read -rp "$(echo -e "${YELLOW}🔑 GitHub token (vuoto = limite pubblico 60 req/h): ${RESET}")" github_token
+  read -rp "$(echo -e "${YELLOW}🌿 Branch di default [master]: ${RESET}")" default_branch
+  default_branch="${default_branch:-master}"
 
-  fi
+  cat > "$MARMITTA_CONFIG_FILE" <<EOF
+# Marmitta config — generato il $(date)
+# Modifica manualmente o riesegui con: marmitta --setup
 
-  echo -e "${RED}❌ Mancano i seguenti comandi necessari: ${missing[*]}${RESET}"
-  read -rp "Vuoi installarli ora? [y/N]: " answer
-  case "$answer" in
-  [Yy]*)
-    echo "Rilevo sistema operativo e installo i pacchetti..."
+GITHUB_USER="${github_user}"
+GITHUB_TOKEN="${github_token}"
+DEFAULT_BRANCH="${default_branch}"
+EOF
 
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-      # macOS con brew
-      if ! command -v brew &>/dev/null; then
-        echo -e "${RED}Homebrew non trovato. Installa Homebrew prima di continuare: https://brew.sh/${RESET}"
-        exit 1
-      fi
-      echo "Usando brew per installare: ${missing[*]}"
-      brew install "${missing[@]}"
-    elif [[ -f /etc/debian_version ]]; then
-      # Debian/Ubuntu
-      echo "Usando apt per installare: ${missing[*]}"
-      sudo apt update && sudo apt install -y "${missing[@]}"
-    elif [[ -f /etc/fedora-release ]]; then
-      # Fedora
-      echo "Usando dnf per installare: ${missing[*]}"
-      sudo dnf install -y "${missing[@]}"
-    elif [[ -f /etc/arch-release ]]; then
-      # Arch Linux
-      echo "Usando pacman per installare: ${missing[*]}"
-      sudo pacman -S --noconfirm "${missing[@]}"
-    else
-      echo -e "${RED}Sistema operativo non riconosciuto o installazione automatica non supportata.${RESET}"
-      echo "Installa manualmente: ${missing[*]}"
-      exit 1
-    fi
-    ;;
-  *)
-    echo "Non sono stati installati i pacchetti necessari. Esco."
-    exit 1
-    ;;
-  esac
+  print_ok "Config salvato in ${MARMITTA_CONFIG_FILE}"
+  load_config
 }
 
-install_dependencies
+# Chiamata all'avvio: crea il config se non esiste, poi deriva le variabili URL/auth
+ensure_config() {
+  if [[ ! -f "$MARMITTA_CONFIG_FILE" ]]; then
+    echo -e "\n${YELLOW}⚠️  Prima esecuzione: configurazione iniziale richiesta.${RESET}"
+    setup_config
+  else
+    load_config
+  fi
 
-# 📦 Header auth (se disponibile)
-if [[ -n "$GITHUB_TOKEN" ]]; then
-  AUTH_HEADER=(-H "Authorization: token $GITHUB_TOKEN")
-else
-  echo -e "${YELLOW}⚠️  Nessun token GitHub rilevato. Userai il limite pubblico di 60 richieste/h.${RESET}"
-  AUTH_HEADER=()
-fi
-
-# ⚡ Titolo iniziale con pixel rossi
-# 🎬 Animazione riga per riga
-echo -e "${RED}█▀▄▀█${BLOOD_RED} ██   █▄▄▄▄ ${RED}█▀▄▀█${RESET} ${BLACK_PITCH}▄█${RED}    ▄▄▄▄▀${BLACK_PITCH}    ▄▄▄▄▀ ██${BLACK_PITCH}"
-sleep 0.05
-echo -e "${DARK_RED}█ █ █${RED} █ █  █  4▀ ${DARK_RED}█ █ █${RED} ██${BLACK_PITCH} ▀▀▀${BLOOD_RED} █${BLACK_PITCH}    ▀▀▀ ${RED}█    █ █${BLOOD_RED}"
-sleep 0.05
-echo -e "${RED}█ ▄ █${BLOOD_RED} █▄▄█ █▀▀▌  █ ▄ █${BLACK_PITCH} ██${RED}     █${BLACK_PITCH}        █    █▄▄█${BLOOD_RED}"
-sleep 0.05
-echo -e "${DARK_RED}█   █${RED} █  █ █  █  █   █${BLACK_PITCH} ▐█${RED}    █${DARK_RED}        █     █  █${RESET}"
-sleep 0.05
-echo -e "   ${RED}█     █   █      █   ▐   ▀        ▀         █${RESET}"
-sleep 0.05
-echo -e "  ${BLOOD_RED}▀     █   ▀      ▀                          █${RESET}"
-sleep 0.05
-echo -e "       ${RED} ▀                                     ▀${RESET}"
-sleep 0.1
-echo -e "       ${RED}                                    ${RESET}"
-sleep 0.1
-echo -e "       ${RED}▀                                     ▀${RESET}"
-sleep 0.1
-
-echo -e "       ${BLOOD_RED}▀                    
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⣤⣤⣤⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣀⠀⠀⠀⢀⣴⠟⠉⠀⠀⠀⠈⠻⣦⡀⠀⠀⠀⣤⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣷⣀⢀⣾⠿⠻⢶⣄⠀⠀⣠⣶⡿⠶⣄⣠⣾⣿⠗⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠉⢻⣿⣿⡿⣿⠿⣿⡿⢼⣿⣿⡿⣿⣎⡟⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⡟⠉⠛⢛⣛⡉⠀⠀⠙⠛⠻⠛⠑⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣿⣧⣤⣴⠿⠿⣷⣤⡤⠴⠖⠳⣄⣀⣹⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⣀⣟⠻⢦⣀⡀⠀⠀⠀⠀⣀⡈⠻⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣼⡿⠉⡇⠀⠀⠛⠛⠛⠋⠉⠉⠀⠀⠀⠹⢧⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣾⡟⠀⢦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠃⠀⠈⠑⠪⠷⠤⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⣾⣿⣿⣿⣦⣼⠛⢦⣤⣄⡀⠀⠀⠀⠀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠑⠢⡀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⢀⣠⠴⠲⠖⠛⠻⣿⡿⠛⠉⠉⠻⠷⣦⣽⠿⠿⠒⠚⠋⠉⠁⡞⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢦⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⢀⣾⠛⠁⠀⠀⠀⠀⠀⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠤⠒⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢣⠀⠀⠀
-⠀⠀⠀⠀⣰⡿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣑⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⡇⠀⠀
-⠀⠀⠀⣰⣿⣁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣾⣧⣄⠀⠀⠀⠀⠀⠀⢳⡀⠀
-⠀⠀⠀⣿⡾⢿⣀⢀⣀⣦⣾⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣾⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡰⣫⣿⡿⠟⠻⠶⠀⠀⠀⠀⠀⢳⠀
-⠀⠀⢀⣿⣧⡾⣿⣿⣿⣿⣿⡷⣶⣤⡀⠀⠀⠀⠀⠀⠀⠀⢀⡴⢿⣿⣧⠀⡀⠀⢀⣀⣀⢒⣤⣶⣿⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
-⠀⠀⡾⠁⠙⣿⡈⠉⠙⣿⣿⣷⣬⡛⢿⣶⣶⣴⣶⣶⣶⣤⣤⠤⠾⣿⣿⣿⡿⠿⣿⠿⢿⣿⣿⣿⣿⣧⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
-⠀⣸⠃⠀⠀⢸⠃⠀⠀⢸⣿⣿⣿⣿⣿⣿⣷⣾⣿⣿⠟⡉⠀⠀⠀⠈⠙⠛⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
-⠀⣿⠀⠀⢀⡏⠀⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⠿⠿⠛⠛⠉⠁⠀⠀⠀⠀⠀⠉⠠⠿⠟⠻⠟⠋⠉⢿⣿⣦⡀⢰⡀⠀⠀⠀⠀⠀⠀⠁
-⢀⣿⡆⢀⡾⠀⠀⠀⠀⣾⠏⢿⣿⣿⣿⣯⣙⢷⡄⠀⠀⠀⠀⠀⢸⡄⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣿⣻⢿⣷⣀⣷⣄⠀⠀⠀⠀⢸⠀
-⢸⠃⠠⣼⠃⠀⠀⣠⣾⡟⠀⠈⢿⣿⡿⠿⣿⣿⡿⠿⠿⠿⠷⣄⠈⠿⠛⠻⠶⢶⣄⣀⣀⡠⠈⢛⡿⠃⠈⢿⣿⣿⡿⠀⠀⠀⠀⠀⡀
-⠟⠀⠀⢻⣶⣶⣾⣿⡟⠁⠀⠀⢸⣿⢅⠀⠈⣿⡇⠀⠀⠀⠀⠀⣷⠂⠀⠀⠀⠀⠐⠋⠉⠉⠀⢸⠁⠀⠀⠀⢻⣿⠛⠀⠀⠀⠀⢀⠇
-⠀⠀⠀⠀⠹⣿⣿⠋⠀⠀⠀⠀⢸⣧⠀⠰⡀⢸⣷⣤⣤⡄⠀⠀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡆⠀⠀⠀⠀⡾⠀⠀⠀⠀⠀⠀⢼⡇
-⠀⠀⠀⠀⠀⠙⢻⠄⠀⠀⠀⠀⣿⠉⠀⠀⠈⠓⢯⡉⠉⠉⢱⣶⠏⠙⠛⠚⠁⠀⠀⠀⠀⠀⣼⠇⠀⠀⠀⢀⡇⠀⠀⠀⠀⠀⠀⠀⡇
-⠀⠀⠀⠀⠀⠀⠻⠄⠀⠀⠀⢀⣿⠀⢠⡄⠀⠀⠀⣁⠁⡀⠀⢠⠀⠀⠀⠀⠀⠀⠀⠀⢀⣐⡟⠀⠀⠀⠀⢸⡇⠀⠀⠀⠀⠀⠀⢠⡇                   ${RESET}"
-sleep 0.1
-
-# 🖊️ Sottotitolo finale
-echo -e "\n${CYAN}${BOLD}SCRIPT MARMITTA - powered by FATT E CAZZ TUOJ 😈${RESET}\n"
-sleep 0.
-
-# Scarica il file remoto temporaneamente
-# TEMP_FILE=$(mktemp)
-# curl -s -o "$TEMP_FILE" "$REMOTE_URL"
-
-# if [ ! -f "$LOCAL_FILE" ]; then
-#   echo -e "${RED}File locale non trovato!${NC}"
-#   rm "$TEMP_FILE"
-#   exit 1
-# fi
-
-# # Confronta i due file
-# if diff "$LOCAL_FILE" "$TEMP_FILE" >/dev/null; then
-#   echo -e "${GREEN}Marmitta è aggiornato all'ultima versione${NC}"
-#   sleep 1
-# else
-#   echo -e "${YELLOW}Marmitta non aggiornato, esegui marmitta -u per aggiornare${NC}"
-# fi
-
-FILE_NAME="marmitta.sh"
-SCRIPT_PATH="/usr/local/bin/marmitta"
-
-REPO_API_URL="https://api.github.com/repos/manuelpringols/scripts/contents"
-FILE_PATH="marmitta/marmitta.sh"
-
-# Controllo esistenza script installato
-if [ ! -f "$SCRIPT_PATH" ]; then
-  echo -e "${RED}❌ Script non trovato in $SCRIPT_PATH${NC}"
-  exit 1
-fi
-
-# Calcolo SHA locale
-LOCAL_SHA=$(git hash-object "$SCRIPT_PATH")
-
-#SHA remoto da GitHub API
-REMOTE_SHA=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-  "https://api.github.com/repos/manuelpringols/scripts/contents/marmitta/marmitta.sh?ref=master" | jq -r .sha)
-
-# Verifica errori
-if [ "$REMOTE_SHA" = "null" ] || [ -z "$REMOTE_SHA" ]; then
-  echo "Errore: file non trovato su GitHub!"
-fi
-
-# Confronto
-if [ "$LOCAL_SHA" == "$REMOTE_SHA" ]; then
-  echo -e "${GREEN}✅ Marmitta è aggiornato all'ultima versione${NC}"
-else
-  echo -e "${YELLOW}⚠️  Marmitta non aggiornato. Esegui 'marmitta -u' per aggiornare.${NC}"
-fi
-
-#Rimuovi il file temporaneo
-rm "$TEMP_FILE"
-
-# 🗂️ Scegli cartella
-while true; do
-  echo -e "\n${MAGENTA}📁 Seleziona una cartella:${RESET}"
-  echo -e "${CYAN}$(pwd)${RESET}"
-  echo -e "⚠️ ${YELLOW}Monitum amicum:${RESET}\nAntequam chaos excitare coneris, semper conare exsequi scriptum cum parametro \`-h\` ut intellegas quid agat! 😜✨\n\nMelius praecavere quam curare! 😉"
-
-  folders_json=$(curl -s "${AUTH_HEADER[@]}" "$REPO_API_URL")
-
-  if echo "$folders_json" | grep -q 'API rate limit exceeded'; then
-    echo -e "${RED}❌ API rate limit superato. Esporta GITHUB_TOKEN per aumentare il limite.${RESET}"
-    echo -e "${CYAN}Esempio:${RESET} export GITHUB_TOKEN=ghp_tuoTokenQui"
+  if [[ -z "$GITHUB_USER" ]]; then
+    print_err "GITHUB_USER non configurato. Esegui: marmitta --setup"
     exit 1
   fi
 
-  folders=$(echo "$folders_json" | jq -r '.[] | select(.type == "dir") | .name')
-  selected_folder=$(
-    echo -e "🔙 Torna indietro\n$folders" | fzf --height=20 --layout=reverse --border --prompt="📁 Cartella > " --ansi --color=fg:white,bg:black,hl:red,pointer:green,marker:yellow --color=fg:#d6de35,bg:#121212,hl:#5f87af --color=fg+:#00ffd9,bg+:#5c00e6,hl+:#5fd7ff --color=fg:#ff00aa,bg:#073a42,hl:#5f87af
+  REPO_API_URL="https://api.github.com/repos/${GITHUB_USER}/scripts/contents"
+  BASE_URL="https://raw.githubusercontent.com/${GITHUB_USER}/scripts/${DEFAULT_BRANCH}"
 
-  )
+  if [[ -n "$GITHUB_TOKEN" ]]; then
+    AUTH_HEADER=(-H "Authorization: token ${GITHUB_TOKEN}")
+  else
+    print_warn "Nessun token GitHub. Limite pubblico: 60 req/h."
+    AUTH_HEADER=()
+  fi
+}
 
-  [[ -z "$selected_folder" || "$selected_folder" == "🔙 Torna indietro" ]] && echo -e "${RED}❌ Annullato.${RESET}" && exit 1
+# ─────────────────────────────────────────────────────────────
+# DIPENDENZE (jq, fzf)
+# ─────────────────────────────────────────────────────────────
+install_dependencies() {
+  local missing=()
+  for cmd in jq fzf; do
+    command -v "$cmd" &>/dev/null || missing+=("$cmd")
+  done
+  [[ ${#missing[@]} -eq 0 ]] && return 0
 
-  echo -e "${GREEN}✅ Hai scelto cartella: $selected_folder${RESET}"
+  print_err "Mancano: ${missing[*]}"
+  read -rp "Vuoi installarli ora? [y/N]: " answer
+  [[ ! "$answer" =~ ^[Yy]$ ]] && echo "Uscita." && exit 1
 
-  # 📜 Scegli script
-  echo -e "\n${MAGENTA}📜 Seleziona uno script da eseguire in ${YELLOW}${selected_folder}${RESET}:"
-  scripts_json=$(curl -s "${AUTH_HEADER[@]}" "$REPO_API_URL/$selected_folder")
-
-  if echo "$scripts_json" | grep -q 'API rate limit exceeded'; then
-    echo -e "${RED}❌ API rate limit superato durante il caricamento degli script.${RESET}"
+  if   [[ "$OSTYPE" == "darwin"* ]];      then brew install "${missing[@]}"
+  elif [[ -f /etc/arch-release ]];        then sudo pacman -S --noconfirm "${missing[@]}"
+  elif [[ -f /etc/debian_version ]];      then sudo apt update && sudo apt install -y "${missing[@]}"
+  elif [[ -f /etc/fedora-release ]];      then sudo dnf install -y "${missing[@]}"
+  else
+    print_err "Sistema non riconosciuto. Installa manualmente: ${missing[*]}"
     exit 1
   fi
+}
 
-  # Scarica le descrizioni all'inizio dello script o prima della selezione
-  desc_url="https://raw.githubusercontent.com/manuelpringols/scripts/master/marmitta/script_desc.txt"
-  descs=$(curl -fsSL "$desc_url")
+# ─────────────────────────────────────────────────────────────
+# DESCRIZIONI SCRIPT (script_desc.txt remoto)
+# ─────────────────────────────────────────────────────────────
+load_script_descs() {
+  SCRIPT_DESCS=$(curl -fsSL \
+    "${BASE_URL}/marmitta/script_desc.txt" 2>/dev/null || echo "")
+}
 
-  scripts=$(echo "$scripts_json" | jq -r '.[] | select(.name | endswith(".sh")) | .name')
+get_desc() {
+  local path="$1"
+  local desc
+  desc=$(echo "$SCRIPT_DESCS" | grep "^${path}" | sed 's/.*# //' 2>/dev/null || true)
+  echo "${desc:-—}"
+}
 
-  # Preparazione lista con descrizioni
-  script_list=""
-  first=true
-  while IFS= read -r script; do
-    desc=$(echo "$descs" | grep "$selected_folder/$script" | sed 's/.*# //')
-    desc=${desc:-"Nessuna descrizione disponibile"}
+# ─────────────────────────────────────────────────────────────
+# CHECK AGGIORNAMENTO
+# ─────────────────────────────────────────────────────────────
+check_update() {
+  [[ ! -f "$MARMITTA_INSTALL_PATH" ]] && return
 
-    if [ "$first" = true ]; then
-      script_list="$script\t$desc"
-      first=false
-    else
-      script_list="$script_list\n$script\t$desc"
+  local local_sha remote_sha
+  local_sha=$(git hash-object "$MARMITTA_INSTALL_PATH" 2>/dev/null || echo "")
+  remote_sha=$(curl -s "${AUTH_HEADER[@]}" \
+    "https://api.github.com/repos/${GITHUB_USER}/scripts/contents/marmitta/marmitta.sh?ref=${DEFAULT_BRANCH}" \
+    | jq -r '.sha // empty' 2>/dev/null || echo "")
+
+  if [[ -z "$remote_sha" ]]; then
+    print_warn "Impossibile verificare aggiornamenti (API non raggiunta)."
+    return
+  fi
+
+  if [[ "$local_sha" == "$remote_sha" ]]; then
+    print_ok "Marmitta è aggiornato."
+  else
+    print_warn "Aggiornamento disponibile. Esegui ${CYAN}marmitta -u${YELLOW} per aggiornare."
+  fi
+}
+
+# ─────────────────────────────────────────────────────────────
+# BANNER ANIMATO
+# ─────────────────────────────────────────────────────────────
+print_banner() {
+  echo -e "${RED}█▀▄▀█${BLOOD_RED} ██   █▄▄▄▄ ${RED}█▀▄▀█${RESET} ${BLACK_PITCH}▄█${RED}    ▄▄▄▄▀${BLACK_PITCH}    ▄▄▄▄▀ ██${BLACK_PITCH}"
+  sleep 0.05
+  echo -e "${DARK_RED}█ █ █${RED} █ █  █  ▄▀ ${DARK_RED}█ █ █${RED} ██${BLACK_PITCH} ▀▀▀${BLOOD_RED} █${BLACK_PITCH}    ▀▀▀ ${RED}█    █ █${BLOOD_RED}"
+  sleep 0.05
+  echo -e "${RED}█ ▄ █${BLOOD_RED} █▄▄█ █▀▀▌  █ ▄ █${BLACK_PITCH} ██${RED}     █${BLACK_PITCH}        █    █▄▄█${BLOOD_RED}"
+  sleep 0.05
+  echo -e "${DARK_RED}█   █${RED} █  █ █  █  █   █${BLACK_PITCH} ▐█${RED}    █${DARK_RED}        █     █  █${RESET}"
+  sleep 0.05
+  echo -e "   ${RED}█     █   █      █   ▐   ▀        ▀         █${RESET}"
+  sleep 0.05
+  echo -e "  ${BLOOD_RED}▀     █   ▀      ▀                          █${RESET}"
+  sleep 0.1
+  echo -e "\n${CYAN}${BOLD}SCRIPT MARMITTA - powered by FATT E CAZZ TUOJ 😈${RESET}"
+  echo -e "${DARK_GRAY}user: ${GITHUB_USER} | branch: ${DEFAULT_BRANCH} | repo: ${GITHUB_USER}/scripts${RESET}\n"
+}
+
+# ─────────────────────────────────────────────────────────────
+# TREE DINAMICO (da GitHub API ricorsiva)
+# ─────────────────────────────────────────────────────────────
+print_tree() {
+  echo -e "\n${MAGENTA}${BOLD}📁 ${GITHUB_USER}/scripts${RESET}\n"
+
+  local tree_data
+  tree_data=$(curl -s "${AUTH_HEADER[@]}" \
+    "https://api.github.com/repos/${GITHUB_USER}/scripts/git/trees/${DEFAULT_BRANCH}?recursive=1" \
+    | jq -r '.tree[] | select(.type == "blob") | .path' 2>/dev/null)
+
+  if [[ -z "$tree_data" ]]; then
+    print_err "Impossibile recuperare la struttura del repo."
+    return 1
+  fi
+
+  local prev_folder=""
+  while IFS= read -r path; do
+    local folder file desc
+    folder=$(dirname "$path")
+    file=$(basename "$path")
+
+    if [[ "$folder" != "$prev_folder" ]]; then
+      echo -e "\n${MAGENTA}├── ${folder}${RESET}"
+      prev_folder="$folder"
     fi
-  done <<<"$scripts"
 
-  # Selezione con fzf mostrando descrizioni come anteprima
-  selected_script=$(echo -e "🔙 Torna indietro\n$script_list" |
-    fzf --height=15 --layout=reverse --border --prompt="📜 Script > " \
-      --with-nth=1 \
-      --delimiter="\t" \
-      --ansi \
-      --preview='echo {} | cut -f2' \
-      --color=fg:white,bg:#292929,hl:red,pointer:green,marker:yellow \
-      --color=fg:#d6de35,bg:#121212,hl:#5f87af | cut -f1)
-  echo -e "${GREEN}✅ Hai scelto script: $selected_script${RESET}"
+    desc=$(get_desc "$path")
+    echo -e "│   └── ${YELLOW}${file}${RESET}  ${DARK_GRAY}${desc}${RESET}"
+  done <<< "$tree_data"
 
-  if [[ -z "$selected_script" || "$selected_script" == "🔙 Torna indietro" ]]; then
-    echo -e "${RED}❌ Annullato o torna indietro selezionato.${RESET}"
-    echo -e "${YELLOW}↩️ Torno al menu cartelle...${RESET}"
-    continue # torna all'inizio del while
-  fi
+  echo ""
+}
 
-  # 📡 Metodo di download
-  downloader="curl -fsSL"
-  URL_FULL="$BASE_URL/$selected_folder/$selected_script"
-  echo "$URL_FULL" >~/.marmitta_last_script
-  echo "💾 Salvato ultimo script: $URL_FULL"
+# ─────────────────────────────────────────────────────────────
+# FZF — tema comune
+# ─────────────────────────────────────────────────────────────
+fzf_select() {
+  # $1 = prompt, resto = opzioni via stdin
+  local prompt="${1:-> }"
+  fzf \
+    --height=20 --layout=reverse --border \
+    --prompt="$prompt" \
+    --color=fg:#d6de35,bg:#121212,hl:#5f87af \
+    --color=fg+:#00ffd9,bg+:#5c00e6,hl+:#5fd7ff \
+    --color=pointer:green,marker:yellow \
+    --ansi
+}
 
-  echo -e "\n${CYAN}🚀 Esecuzione comando:${RESET}"
-  echo -e "${YELLOW}bash -c \"\$($downloader $URL_FULL)\"${RESET}"
+# ─────────────────────────────────────────────────────────────
+# CORE — navigazione repo con supporto sottocartelle
+# ─────────────────────────────────────────────────────────────
+browse_and_run() {
+  local current_path=""
 
-  echo -e "${CYAN}Premi INVIO per eseguire lo script"
-  echo -e "Premi ${YELLOW}I${CYAN} per inserire parametri"
-  echo -e "Premi ${RED}Ctrl+C${CYAN} per annullare...${RESET}"
+  while true; do
+    # API URL per il path corrente (root o sottocartella)
+    local api_url="${REPO_API_URL}"
+    [[ -n "$current_path" ]] && api_url="${REPO_API_URL}/${current_path}"
 
-  read -rsn1 key
-  if [[ $key == "i" ]]; then
-    echo # va a capo
-    echo -e "${MAGENTA}⌨️ Inserisci gli argomenti da passare allo script:${RESET}"
-    read -rp "Args: " user_args
+    # Fetch contenuto cartella
+    local contents
+    contents=$(curl -s "${AUTH_HEADER[@]}" "$api_url")
 
-    temp_script=$(mktemp)
-    echo -e "\n${GREEN}⬇️ Scarico script temporaneo...${RESET}"
-    curl -fsSL "$URL_FULL" -o "$temp_script" || {
-      echo -e "${RED}Errore nel download dello script.${RESET}"
+    if echo "$contents" | grep -q 'API rate limit exceeded'; then
+      print_err "API rate limit superato. Aggiungi GITHUB_TOKEN con: marmitta --setup"
       exit 1
-    }
-    chmod +x "$temp_script"
+    fi
 
-    echo -e "\n${GREEN}▶️ Eseguo:${RESET} ${YELLOW}$temp_script $user_args${RESET}"
-    "$temp_script" $user_args
-    rm "$temp_script"
-    exit 0
+    # Separa cartelle e script .sh
+    local dirs
+    local scripts_raw
+    dirs=$(echo "$contents" | jq -r '.[] | select(.type == "dir") | .name' 2>/dev/null || echo "")
+    scripts_raw=$(echo "$contents" | jq -r '.[] | select(.type == "file" and (.name | endswith(".sh"))) | .name' 2>/dev/null || echo "")
+
+    # Costruisci lista con descrizioni (tab-separated: nome \t descrizione)
+    local menu_entries=""
+
+    # Prima le cartelle
+    while IFS= read -r dir; do
+      [[ -z "$dir" ]] && continue
+      menu_entries+="📁 ${dir}\t—\n"
+    done <<< "$dirs"
+
+    # Poi gli script con descrizione
+    while IFS= read -r script; do
+      [[ -z "$script" ]] && continue
+      local full_path="${current_path:+${current_path}/}${script}"
+      local desc
+      desc=$(get_desc "$full_path")
+      menu_entries+="📜 ${script}\t${desc}\n"
+    done <<< "$scripts_raw"
+
+    if [[ -z "$menu_entries" ]]; then
+      print_warn "Nessun contenuto trovato in: ${current_path:-root}"
+      current_path=$(dirname "$current_path")
+      [[ "$current_path" == "." ]] && current_path=""
+      continue
+    fi
+
+    # Breadcrumb nel prompt
+    local prompt_path="${GITHUB_USER}/scripts"
+    [[ -n "$current_path" ]] && prompt_path+="/${current_path}"
+
+    # Opzione "torna indietro" se siamo in una sottocartella
+    local back_entry=""
+    [[ -n "$current_path" ]] && back_entry="🔙 Torna indietro\t\n"
+
+    # Selezione via fzf
+    local selected
+    selected=$(printf "%b" "${back_entry}${menu_entries}" | \
+      fzf \
+        --height=22 --layout=reverse --border \
+        --prompt="📁 ${prompt_path} > " \
+        --with-nth=1 \
+        --delimiter="\t" \
+        --preview='echo -e "\033[0;96mDescrizione:\033[0m " $(echo {} | cut -f2)' \
+        --preview-window=up:3:wrap \
+        --color=fg:#d6de35,bg:#121212,hl:#5f87af \
+        --color=fg+:#00ffd9,bg+:#5c00e6,hl+:#5fd7ff \
+        --color=pointer:green,marker:yellow \
+        --ansi \
+      | cut -f1)
+
+    # Annullato (Ctrl+C o ESC)
+    if [[ -z "$selected" ]]; then
+      print_err "Annullato."
+      return 1
+    fi
+
+    # Torna indietro
+    if [[ "$selected" == "🔙 Torna indietro" ]]; then
+      current_path=$(dirname "$current_path")
+      [[ "$current_path" == "." ]] && current_path=""
+      continue
+    fi
+
+    # Estrae il nome (rimuove emoji + spazio iniziale → 1 char emoji + 1 spazio = :2)
+    local item_name="${selected:2}"
+
+    # Cartella → entra
+    if [[ "$selected" == 📁* ]]; then
+      current_path="${current_path:+${current_path}/}${item_name}"
+      continue
+    fi
+
+    # Script → chiede come eseguire
+    local script_path="${current_path:+${current_path}/}${item_name}"
+    local url_full="${BASE_URL}/${script_path}"
+
+    echo "$url_full" > "$MARMITTA_LAST_SCRIPT"
+
+    echo -e "\n${CYAN}📜 Script:${RESET}  ${YELLOW}${script_path}${RESET}"
+    echo -e "${CYAN}🔗 URL:${RESET}     ${DARK_GRAY}${url_full}${RESET}"
+    echo -e "\n${CYAN}[ ${GREEN}INVIO${CYAN} ] Esegui   [ ${YELLOW}i${CYAN} ] Passa parametri   [ ${RED}Ctrl+C${CYAN} ] Annulla${RESET}"
+
+    local key
+    read -rsn1 key
+
+    case "$key" in
+      i|I)
+        echo
+        read -rp "$(echo -e "${MAGENTA}⌨️  Argomenti: ${RESET}")" user_args
+        local tmp
+        tmp=$(mktemp)
+        echo -e "${GREEN}⬇️  Download in corso...${RESET}"
+        if ! curl -fsSL "$url_full" -o "$tmp"; then
+          print_err "Errore nel download dello script."
+          rm -f "$tmp"
+          return 1
+        fi
+        chmod +x "$tmp"
+        echo -e "${GREEN}▶️  Eseguo:${RESET} ${YELLOW}${item_name} ${user_args}${RESET}\n"
+        bash "$tmp" $user_args
+        rm -f "$tmp"
+        ;;
+      *)
+        echo -e "\n${GREEN}▶️  Eseguo senza parametri...${RESET}\n"
+        bash <(curl -fsSL "$url_full")
+        ;;
+    esac
+
+    return 0
+  done
+}
+
+# ─────────────────────────────────────────────────────────────
+# HANDLER: HELP
+# ─────────────────────────────────────────────────────────────
+print_help() {
+  echo -e "\n${BLUE}m${YELLOW}a${MAGENTA}r${CYAN}m${GREEN}i${PURPLE}t${ORANGE}t${DARK_GRAY}a${RESET} ${BOLD}— launcher di script shell${RESET}\n"
+  echo -e "${YELLOW}Uso:${RESET} marmitta [opzione]\n"
+  printf "  %-20s %s\n" \
+    "${CYAN}-l, --last${RESET}"   "Riesegue l'ultimo script" \
+    "${MAGENTA}-t, --tree${RESET}"  "Struttura repo (dinamica, da GitHub API)" \
+    "${RED}-h, --help${RESET}"   "Mostra questa guida" \
+    "${GREEN}-u${RESET}"          "Aggiorna marmitta all'ultima versione" \
+    "${ORANGE}-Gsp${RESET}"       "Push rapido git (slither_push)" \
+    "${CYAN}-py${RESET}"          "Launcher script Python (pitonzi)" \
+    "${PURPLE}--login${RESET}"    "Login Bitwarden + salva GITHUB_TOKEN" \
+    "${YELLOW}--setup${RESET}"    "Riconfigura marmitta (user, token, branch)"
+  echo -e "\n${DARK_GRAY}Monitum amicum: usa sempre -h prima di eseguire uno script sconosciuto! 😜${RESET}\n"
+}
+
+# ─────────────────────────────────────────────────────────────
+# HANDLER: UPDATE
+# ─────────────────────────────────────────────────────────────
+do_update() {
+  local url="${BASE_URL}/marmitta/marmitta_update.sh"
+  print_step "Scarico marmitta_update.sh..."
+  curl -fsSL "$url" | bash
+}
+
+# ─────────────────────────────────────────────────────────────
+# HANDLER: LAST SCRIPT
+# ─────────────────────────────────────────────────────────────
+do_last() {
+  local last
+  last=$(cat "$MARMITTA_LAST_SCRIPT" 2>/dev/null || echo "")
+  if [[ -z "$last" ]]; then
+    print_err "Nessuno script eseguito precedentemente."
+    exit 1
   fi
-  echo -e "\n${GREEN}▶️ Eseguo senza parametri...${RESET}"
-  bash -c "$($downloader $URL_FULL)"
-  exit 0
-done
+  echo -e "${CYAN}▶️  Rieseguo:${RESET} ${YELLOW}${last}${RESET}\n"
+  bash <(curl -fsSL "$last")
+}
+
+# ─────────────────────────────────────────────────────────────
+# HANDLER: LOGIN (Bitwarden + aggiorna sessione corrente)
+# ─────────────────────────────────────────────────────────────
+do_login() {
+  local url="${BASE_URL}/marmitta/marmitta_login.sh"
+  print_step "Avvio login da marmitta_login.sh..."
+  local tmp
+  tmp=$(mktemp)
+  curl -s -o "$tmp" "$url"
+  chmod +x "$tmp"
+  bash "$tmp"
+  rm -f "$tmp"
+
+  # Ricarica il token nella sessione corrente dal config aggiornato
+  load_config
+  if [[ -n "$GITHUB_TOKEN" ]]; then
+    export GITHUB_TOKEN
+    AUTH_HEADER=(-H "Authorization: token ${GITHUB_TOKEN}")
+    print_ok "Token aggiornato nella sessione corrente."
+  fi
+}
+
+# ─────────────────────────────────────────────────────────────
+# HANDLER: PITONZI (launcher script Python)
+# ─────────────────────────────────────────────────────────────
+call_pitonzi() {
+  echo -e "${RED}██████╗ ${BLOOD_RED}██╗████████╗${GREEN_NEON} ██████╗ ${GREEN_TOXIC}███╗   ██╗${RED}███████╗${RESET}"
+  sleep 0.05
+  echo -e "${DARK_RED}██╔══██╗${RED}██║╚══██╔══╝${GREEN_SLIME} ██╔═══██╗${GREEN_NEON}████╗  ██║${DARK_RED}██╔════╝${RESET}"
+  sleep 0.05
+  echo -e "${RED}██████╔╝${BLOOD_RED}██║   ██║   ${GREEN_TOXIC}██║   ██║${GREEN_SLIME}██╔██╗ ██║${RED}█████╗${RESET}"
+  sleep 0.05
+  echo -e "${DARK_RED}██╔═══╝ ${RED}██║   ██║   ${GREEN_TOXIC}██║   ██║${GREEN_DARK}██║╚██╗██║${RED}██╔══╝${RESET}"
+  sleep 0.05
+  echo -e "${RED}██║     ${BLOOD_RED}██║   ██║  ${GREEN_SLIME}╚██████╔╝${GREEN_TOXIC}██║ ╚████║${GREEN_NEON}██║${RESET}"
+  sleep 0.1
+  echo -e "${DARK_RED}╚═╝     ${BLACK_PITCH}╚═╝   ╚═╝  ${GREEN_DARK}╚══════╝ ${BLACK_PITCH}╚═════╝ ${GREEN_SLIME}╚═╝${RESET}\n"
+
+  local tmp
+  tmp=$(mktemp)
+  curl -fsSL "${BASE_URL}/pitonzi/run_pitonzi.sh" -o "$tmp"
+  chmod +x "$tmp"
+  bash "$tmp" "$@"
+  rm -f "$tmp"
+}
+
+# ─────────────────────────────────────────────────────────────
+# HANDLER: SLITHER PUSH
+# ─────────────────────────────────────────────────────────────
+do_slither_push() {
+  sh -c "$(curl -fsSL "${BASE_URL}/init_git_repo/slither_push_repo.sh")" -- "$@"
+}
+
+# ─────────────────────────────────────────────────────────────
+# ENTRY POINT
+# ─────────────────────────────────────────────────────────────
+check_internet
+ensure_config
+
+case "${1:-}" in
+  -h|--help)   print_help;                          exit 0 ;;
+  --setup)     setup_config;                        exit 0 ;;
+  --login)     do_login;                            exit 0 ;;
+  -l|--last)   do_last;                             exit 0 ;;
+  -t|--tree)   load_script_descs; print_tree;       exit 0 ;;
+  -u)          do_update;                           exit 0 ;;
+  -py)         shift; call_pitonzi "$@";            exit 0 ;;
+  -Gsp)        shift; do_slither_push "$@";         exit 0 ;;
+  "")          ;;   # menu principale
+  *)           print_err "Opzione non riconosciuta: $1"; print_help; exit 1 ;;
+esac
+
+# Menu principale
+install_dependencies
+load_script_descs
+print_banner
+check_update
+echo ""
+browse_and_run
