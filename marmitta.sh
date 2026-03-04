@@ -391,19 +391,76 @@ check_update() {
 # ─────────────────────────────────────────────────────────────
 # === BANNER ===
 # ─────────────────────────────────────────────────────────────
+# Stampa una stringa carattere per carattere rispettando le sequenze ANSI
+_typewriter() {
+  local text="$1"
+  local delay="${2:-0.006}"
+  local i=0
+  local len=${#text}
+  while [[ $i -lt $len ]]; do
+    local char="${text:$i:1}"
+    if [[ "$char" == $'\e' ]]; then
+      # Sequenza escape — la stampa intera senza ritardo
+      local seq="$char"
+      (( i++ ))
+      while [[ $i -lt $len ]]; do
+        char="${text:$i:1}"
+        seq+="$char"
+        (( i++ ))
+        [[ "$char" =~ [a-zA-Z] ]] && break
+      done
+      printf "%b" "$seq"
+    else
+      printf "%s" "$char"
+      sleep "$delay"
+      (( i++ ))
+    fi
+  done
+  printf "\n"
+}
+
+# Glow: ricolora rapidamente il banner con bianco brillante poi torna al normale
+_banner_glow() {
+  local lines=("$@")
+  local n=${#lines[@]}
+  # Torna su di n righe
+  printf "\033[%dA" "$n"
+  # Stampa in bianco brillante
+  for line in "${lines[@]}"; do
+    printf "\033[1;97m"
+    # Strip dei codici colore originali — stampa solo i caratteri visibili
+    echo -e "$line" | sed 's/\x1b\[[0-9;]*m//g' | tr -d "\n"
+    printf "\033[0m\n"
+    sleep 0.015
+  done
+  # Torna su di n righe e ristampa con i colori originali
+  printf "\033[%dA" "$n"
+  for line in "${lines[@]}"; do
+    echo -e "$line"
+    sleep 0.015
+  done
+}
+
 print_banner() {
-  echo -e "${RED}█▀▄▀█${BLOOD_RED} ██   █▄▄▄▄ ${RED}█▀▄▀█${RESET} ${BLACK_PITCH}▄█${RED}    ▄▄▄▄▀${BLACK_PITCH}    ▄▄▄▄▀ ██${BLACK_PITCH}"
-  sleep 0.04
-  echo -e "${DARK_RED}█ █ █${RED} █ █  █  ▄▀ ${DARK_RED}█ █ █${RED} ██${BLACK_PITCH} ▀▀▀${BLOOD_RED} █${BLACK_PITCH}    ▀▀▀ ${RED}█    █ █${BLOOD_RED}"
-  sleep 0.04
-  echo -e "${RED}█ ▄ █${BLOOD_RED} █▄▄█ █▀▀▌  █ ▄ █${BLACK_PITCH} ██${RED}     █${BLACK_PITCH}        █    █▄▄█${BLOOD_RED}"
-  sleep 0.04
-  echo -e "${DARK_RED}█   █${RED} █  █ █  █  █   █${BLACK_PITCH} ▐█${RED}    █${DARK_RED}        █     █  █${RESET}"
-  sleep 0.04
-  echo -e "   ${RED}█     █   █      █   ▐   ▀        ▀         █${RESET}"
-  sleep 0.04
-  echo -e "  ${BLOOD_RED}▀     █   ▀      ▀                          ▀${RESET}"
+  local L1="${RED}█▀▄▀█${BLOOD_RED} ██   █▄▄▄▄ ${RED}█▀▄▀█${RESET} ${BLACK_PITCH}▄█${RED}    ▄▄▄▄▀${BLACK_PITCH}    ▄▄▄▄▀ ██${BLACK_PITCH}"
+  local L2="${DARK_RED}█ █ █${RED} █ █  █  ▄▀ ${DARK_RED}█ █ █${RED} ██${BLACK_PITCH} ▀▀▀${BLOOD_RED} █${BLACK_PITCH}    ▀▀▀ ${RED}█    █ █${BLOOD_RED}"
+  local L3="${RED}█ ▄ █${BLOOD_RED} █▄▄█ █▀▀▌  █ ▄ █${BLACK_PITCH} ██${RED}     █${BLACK_PITCH}        █    █▄▄█${BLOOD_RED}"
+  local L4="${DARK_RED}█   █${RED} █  █ █  █  █   █${BLACK_PITCH} ▐█${RED}    █${DARK_RED}        █     █  █${RESET}"
+  local L5="   ${RED}█     █   █      █   ▐   ▀        ▀         █${RESET}"
+  local L6="  ${BLOOD_RED}▀     █   ▀      ▀                          ▀${RESET}"
+
+  # Typewriter riga per riga
+  _typewriter "$(echo -e "$L1")" 0.007
+  _typewriter "$(echo -e "$L2")" 0.007
+  _typewriter "$(echo -e "$L3")" 0.007
+  _typewriter "$(echo -e "$L4")" 0.007
+  _typewriter "$(echo -e "$L5")" 0.007
+  _typewriter "$(echo -e "$L6")" 0.007
+
+  # Glow flash sul banner completo
   sleep 0.08
+  _banner_glow "$L1" "$L2" "$L3" "$L4" "$L5" "$L6"
+
   echo -e "\n${CYAN}${BOLD}  MARMITTA — Script Launcher 😈${RESET}"
   echo -e "${DARK_GRAY}  source: ${CURRENT_SOURCE_LABEL} (${CURRENT_SOURCE_REPO}@${CURRENT_SOURCE_BRANCH})${RESET}\n"
 }
