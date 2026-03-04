@@ -316,50 +316,77 @@ _cache_file() {
 
 # Scarica script_desc.txt dal repo e lo salva in cache
 # 1 sola chiamata API invece di 1+N
-gen_desc() {
-  local cache_file
-  cache_file=$(_cache_file)
-  local desc_url="${CURRENT_BASE_URL}/script_desc.txt"
-
-  print_step "Scarico script_desc.txt da ${CURRENT_SOURCE_REPO}..."
-
-  local content
-  content=$(curl -fsSL "$desc_url" 2>/dev/null || echo "")
-
-  if [[ -z "$content" ]]; then
-    print_warn "script_desc.txt non trovato nel repo."
-    print_info "Crea il file ${CURRENT_SOURCE_REPO}/script_desc.txt con il formato:"
-    print_info "  categoria/subdir/script.sh    # Descrizione breve"
-    # Scrive file vuoto con timestamp — evita rigenerazione loop
-    echo "# generated: $(date) — script_desc.txt assente" > "$cache_file"
-    return 0
-  fi
-
-  # Salva in cache filtrando righe commento e vuote
-  echo "$content" | grep -v '^\s*#' | grep -v '^\s*$' > "$cache_file"
-  echo "# generated: $(date)" >> "$cache_file"
-  local count
-  count=$(grep -c '.' "$cache_file" 2>/dev/null || echo 0)
-  print_ok "Descrizioni caricate (${count} script)."
+_cache_file_cat() {
+  local cache_dir="$MARMITTA_CONFIG_DIR/cache"
+  mkdir -p "$cache_dir"
+  echo "${cache_dir}/$(echo "$CURRENT_SOURCE_REPO" | tr '/' '_')_${CURRENT_SOURCE_BRANCH}.cat"
 }
 
-load_script_descs() {
-  local cache_file
+gen_desc() {
+  local cache_file cache_cat
   cache_file=$(_cache_file)
+  cache_cat=$(_cache_file_cat)
+
+  # ── script_desc.txt ──
+  print_step "Scarico script_desc.txt da ${CURRENT_SOURCE_REPO}..."
+  local scripts_content
+  scripts_content=$(curl -fsSL "${CURRENT_BASE_URL}/script_desc.txt" 2>/dev/null || echo "")
+
+  if [[ -z "$scripts_content" ]]; then
+    print_warn "script_desc.txt non trovato nel repo."
+    print_info "Formato: categoria/subdir/script.sh    # Descrizione breve"
+    echo "# generated: $(date) — assente" > "$cache_file"
+  else
+    echo "$scripts_content" | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' > "$cache_file"
+    echo "# generated: $(date)" >> "$cache_file"
+    local sc
+    sc=$(grep -c '.' "$cache_file" 2>/dev/null || echo 0)
+    print_ok "Script descrizioni caricate (${sc})."
+  fi
+
+  # ── category_desc.txt ──
+  print_step "Scarico category_desc.txt da ${CURRENT_SOURCE_REPO}..."
+  local cat_content
+  cat_content=$(curl -fsSL "${CURRENT_BASE_URL}/category_desc.txt" 2>/dev/null || echo "")
+
+  if [[ -z "$cat_content" ]]; then
+    print_warn "category_desc.txt non trovato nel repo."
+    print_info "Formato: nome_categoria    # Descrizione breve"
+    echo "# generated: $(date) — assente" > "$cache_cat"
+  else
+    echo "$cat_content" | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' > "$cache_cat"
+    echo "# generated: $(date)" >> "$cache_cat"
+    local cc
+    cc=$(grep -c '.' "$cache_cat" 2>/dev/null || echo 0)
+    print_ok "Categorie descrizioni caricate (${cc})."
+  fi
+}
+
+CATEGORY_DESCS=""
+
+load_script_descs() {
+  local cache_file cache_cat
+  cache_file=$(_cache_file)
+  cache_cat=$(_cache_file_cat)
 
   local should_gen=0
-  if [[ ! -f "$cache_file" ]]; then
+  if [[ ! -f "$cache_file" || ! -f "$cache_cat" ]]; then
     should_gen=1
   elif [[ -n "$(find "$cache_file" -mmin +1440 2>/dev/null)" ]]; then
-    # Cache scaduta dopo 24h
     should_gen=1
   fi
 
-  if [[ "$should_gen" -eq 1 ]]; then
-    gen_desc
-  fi
+  [[ "$should_gen" -eq 1 ]] && gen_desc
 
   SCRIPT_DESCS=$(cat "$cache_file" 2>/dev/null || echo "")
+  CATEGORY_DESCS=$(cat "$cache_cat" 2>/dev/null || echo "")
+}
+
+get_cat_desc() {
+  local cat="$1"
+  local desc
+  desc=$(echo "$CATEGORY_DESCS" | grep "^${cat}[[:space:]]" | sed 's/.*# //' 2>/dev/null || true)
+  echo "${desc:----}"
 }
 
 get_desc() {
@@ -391,16 +418,40 @@ check_update() {
 # ─────────────────────────────────────────────────────────────
 # === BANNER ===
 # ─────────────────────────────────────────────────────────────
+# Flag globale: se 1 salta tutte le animazioni
+_ANIM_SKIP=0
+
+# Controlla se l'utente ha premuto un tasto — non-blocking
+_check_skip() {
+  local key
+  if read -rsn1 -t 0 key 2>/dev/null; then
+    _ANIM_SKIP=1
+  fi
+}
+
 # Stampa una stringa carattere per carattere rispettando le sequenze ANSI
 _typewriter() {
   local text="$1"
   local delay="${2:-0.006}"
+
+  # Se già skippata → stampa tutto in una volta
+  if [[ "$_ANIM_SKIP" -eq 1 ]]; then
+    printf "%b\n" "$text"
+    return
+  fi
+
   local i=0
   local len=${#text}
   while [[ $i -lt $len ]]; do
+    _check_skip
+    if [[ "$_ANIM_SKIP" -eq 1 ]]; then
+      # Stampa il resto tutto insieme
+      printf "%b" "${text:$i}"
+      printf "\n"
+      return
+    fi
     local char="${text:$i:1}"
     if [[ "$char" == $'\e' ]]; then
-      # Sequenza escape — la stampa intera senza ritardo
       local seq="$char"
       (( i++ ))
       while [[ $i -lt $len ]]; do
@@ -421,19 +472,16 @@ _typewriter() {
 
 # Glow: ricolora rapidamente il banner con bianco brillante poi torna al normale
 _banner_glow() {
+  [[ "$_ANIM_SKIP" -eq 1 ]] && return
   local lines=("$@")
   local n=${#lines[@]}
-  # Torna su di n righe
   printf "\033[%dA" "$n"
-  # Stampa in bianco brillante
   for line in "${lines[@]}"; do
     printf "\033[1;97m"
-    # Strip dei codici colore originali — stampa solo i caratteri visibili
     echo -e "$line" | sed 's/\x1b\[[0-9;]*m//g' | tr -d "\n"
     printf "\033[0m\n"
     sleep 0.015
   done
-  # Torna su di n righe e ristampa con i colori originali
   printf "\033[%dA" "$n"
   for line in "${lines[@]}"; do
     echo -e "$line"
@@ -590,17 +638,28 @@ browse_and_run() {
   # ── Loop esterno: torna qui dopo ogni esecuzione o back ──
   while true; do
 
-    # ── Livello 1: categorie ──
+    # ── Livello 1: categorie con descrizioni ──
+    local cat_menu="" cat_line
+    while IFS= read -r cat; do
+      [[ -z "$cat" ]] && continue
+      cat_menu+="${cat}	$(get_cat_desc "$cat")
+"
+    done <<< "$categories"
+
     local chosen_category
-    chosen_category=$(echo "$categories" | \
+    chosen_category=$(printf "%b" "$cat_menu" | \
       fzf \
         --height=18 --layout=reverse --border \
         --prompt="📁 Categoria > " \
+        --delimiter="\t" \
+        --with-nth=1 \
+        --preview='echo -e "\033[0;96mℹ️  \033[0m" $(echo {} | cut -f2)' \
+        --preview-window=up:2:wrap \
         --header="  ${CURRENT_SOURCE_LABEL} — [ESC] esci" \
         --color=fg:#d6de35,bg:#121212,hl:#5f87af \
         --color=fg+:#00ffd9,bg+:#5c00e6,hl+:#5fd7ff \
         --color=pointer:green,header:italic \
-        --ansi)
+        --ansi | cut -f1)
 
     # ESC / Ctrl+C al livello 1 → uscita da marmitta
     if [[ -z "$chosen_category" ]]; then
