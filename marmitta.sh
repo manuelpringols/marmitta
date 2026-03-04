@@ -684,20 +684,37 @@ ${RED}Tutto il setup verrà cancellato. Al prossimo avvio ripartirà da zero.${R
 # === HANDLER: HELP ===
 # ─────────────────────────────────────────────────────────────
 print_help() {
-  echo -e "\n${BOLD}${CYAN}MARMITTA${RESET} — Script Launcher\n"
+  echo -e "\n${BOLD}${CYAN}MARMITTA${RESET} — Script Launcher"
+  echo -e "${DARK_GRAY}github.com/manuelpringols/marmitta${RESET}\n"
   echo -e "${YELLOW}Uso:${RESET} marmitta [opzione]\n"
-  printf "  %-30s %s\n" \
-    "${CYAN}-l, --last${RESET}"      "Riesegue l'ultimo script" \
-    "${MAGENTA}-t, --tree${RESET}"   "Struttura repo (source corrente)" \
-    "${GREEN}-u${RESET}"             "Aggiorna marmitta all'ultima versione" \
-    "${ORANGE}-Gsp${RESET}"          "Push rapido git (slither_push)" \
-    "${CYAN}-py${RESET}"             "Launcher script Python (pitonzi)" \
-    "${PURPLE}--login${RESET}"       "Login Bitwarden + salva GITHUB_TOKEN" \
-    "${YELLOW}--setup, --config${RESET}"  "Riconfigura marmitta (token, branch)" \
-    "${YELLOW}--add-source${RESET}"  "Aggiungi una source (repo GitHub)" \
-    "${YELLOW}--gen-desc${RESET}"    "Rigenera cache descrizioni" \
-    "${RED}--reset${RESET}"          "Cancella config, sources e cache" \
-    "${RED}-h, --help${RESET}"       "Mostra questa guida"
+
+  _row() { echo -e "  ${1}  ${DARK_GRAY}${2}${RESET}"; }
+
+  echo -e "${DARK_GRAY}── Navigazione ───────────────────────────${RESET}"
+  _row "${CYAN}-l, --last${RESET}           " "Riesegue l'ultimo script"
+  _row "${MAGENTA}-t, --tree${RESET}           " "Struttura repo (source corrente)"
+
+  echo -e "\n${DARK_GRAY}── Aggiornamento ─────────────────────────${RESET}"
+  _row "${GREEN}-u${RESET}                   " "Aggiorna marmitta all'ultima versione"
+
+  echo -e "\n${DARK_GRAY}── Git ───────────────────────────────────${RESET}"
+  _row "${ORANGE}-Gsp${RESET}                 " "Push rapido git (slither_push)"
+
+  echo -e "\n${DARK_GRAY}── Python ────────────────────────────────${RESET}"
+  _row "${CYAN}-py${RESET}                  " "Launcher script Python (pitonzi)"
+
+  echo -e "\n${DARK_GRAY}── Configurazione ────────────────────────${RESET}"
+  _row "${PURPLE}--login${RESET}              " "Login Bitwarden + salva GITHUB_TOKEN"
+  _row "${YELLOW}--setup, --config${RESET}    " "Riconfigura marmitta (token, branch)"
+  _row "${YELLOW}--add-source${RESET}         " "Aggiungi una source (repo GitHub)"
+  _row "${YELLOW}--gen-desc${RESET}           " "Rigenera cache descrizioni"
+
+  echo -e "\n${DARK_GRAY}── Pericoloso ────────────────────────────${RESET}"
+  _row "${RED}--reset${RESET}              " "Cancella config, sources e cache"
+
+  echo -e "\n${DARK_GRAY}── Help ──────────────────────────────────${RESET}"
+  _row "${RED}-h, --help${RESET}           " "Mostra questa guida"
+
   echo -e "\n${DARK_GRAY}Monitum amicum: usa -h prima di eseguire uno script sconosciuto! 😜${RESET}\n"
 }
 

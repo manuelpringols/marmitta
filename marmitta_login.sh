@@ -1,171 +1,219 @@
 #!/bin/bash
-set -e
+# @desc: Login Bitwarden CLI per ottenere e salvare il GitHub token in modo sicuro
 
-print_yellow() { echo -e "\e[33m$1\e[0m"; }
-print_green()  { echo -e "\e[32m$1\e[0m"; }
-print_red()    { echo -e "\e[31m$1\e[0m"; }
+MARMITTA_CONFIG_DIR="$HOME/.config/marmitta"
+MARMITTA_CONFIG_FILE="$MARMITTA_CONFIG_DIR/config"
 
-detect_os_and_package_manager() {
-    OS_TYPE=""
-    DISTRO=""
-    PACKAGE_MANAGER=""
+GREEN="\e[92m"
+RED="\e[38;5;160m"
+CYAN="\e[96m"
+YELLOW="\e[93m"
+MAGENTA="\e[95m"
+DARK_GRAY="\e[90m"
+BOLD="\e[1m"
+RESET="\e[0m"
 
-    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        OS_TYPE="Linux"
-        if [ -f /etc/os-release ]; then
-            . /etc/os-release
-            DISTRO=$ID
-        elif [ -f /etc/lsb-release ]; then
-            . /etc/lsb-release
-            DISTRO=$DISTRIB_ID
-        fi
-        case "$DISTRO" in
-            ubuntu|debian) PACKAGE_MANAGER="apt" ;;
-            fedora)        PACKAGE_MANAGER="dnf" ;;
-            centos|rhel)   PACKAGE_MANAGER="yum" ;;
-            arch)          PACKAGE_MANAGER="pacman" ;;
-            alpine)        PACKAGE_MANAGER="apk" ;;
-            *)             PACKAGE_MANAGER="unknown" ;;
-        esac
+print_ok()   { echo -e "${GREEN}✅ $1${RESET}"; }
+print_err()  { echo -e "${RED}❌ $1${RESET}"; exit 1; }
+print_warn() { echo -e "${YELLOW}⚠️  $1${RESET}"; }
+print_info() { echo -e "${CYAN}ℹ️  $1${RESET}"; }
+print_step() { echo -e "${MAGENTA}➡️  $1${RESET}"; }
 
-    elif [[ "$OSTYPE" == "darwin"* ]]; then
-        OS_TYPE="macOS"
-        PACKAGE_MANAGER="brew"
+echo -e "\n${CYAN}${BOLD}🔐 Marmitta Login — Bitwarden${RESET}\n"
+echo -e "${DARK_GRAY}  Recupera il GitHub token da Bitwarden"
+echo -e "  e lo salva nel config di marmitta (chmod 600).${RESET}\n"
 
-    elif [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" ]]; then
-        OS_TYPE="Windows"
-        PACKAGE_MANAGER="choco"
+# ─────────────────────────────────────────────────────────────
+# === VERIFICA BW CLI ===
+# ─────────────────────────────────────────────────────────────
+if ! command -v bw &>/dev/null; then
+  echo -e "${RED}❌ Bitwarden CLI non trovato.${RESET}\n"
+  echo -e "${YELLOW}Installalo con uno di questi metodi:${RESET}\n"
+  echo -e "  ${CYAN}npm${RESET}     →  npm install -g @bitwarden/cli"
+  echo -e "  ${CYAN}Arch${RESET}    →  sudo pacman -S bitwarden-cli"
+  echo -e "  ${CYAN}Debian${RESET}  →  sudo apt install bitwarden-cli"
+  echo -e "  ${CYAN}Fedora${RESET}  →  sudo dnf install bitwarden-cli"
+  echo -e "  ${CYAN}macOS${RESET}   →  brew install bitwarden-cli"
+  echo -e "  ${CYAN}Snap${RESET}    →  sudo snap install bw"
+  echo -e "\n${DARK_GRAY}Documentazione: https://bitwarden.com/help/cli/${RESET}\n"
+  exit 1
+fi
+
+BW_VERSION=$(bw --version 2>/dev/null)
+print_info "Bitwarden CLI versione: ${BW_VERSION}"
+
+# ─────────────────────────────────────────────────────────────
+# === FUNZIONE UNLOCK con rilevamento errore Argon2 ===
+# ─────────────────────────────────────────────────────────────
+_bw_do() {
+  local cmd="$1"
+  local tmp
+  tmp=$(mktemp)
+
+  print_step "bw ${cmd} in corso..."
+  bw "$cmd" < /dev/tty 2>&1 | tee "$tmp" > /dev/tty
+
+  # Controlla errore KDF Argon2
+  if grep -q "provided key is not the expected type" "$tmp" 2>/dev/null; then
+    rm -f "$tmp"
+    echo -e "\n${RED}${BOLD}⚠️  Errore KDF Argon2 rilevato${RESET}\n"
+    echo -e "${YELLOW}Il tuo vault usa Argon2id ma la sessione locale è cached con il vecchio"
+    echo -e "algoritmo PBKDF2. Il fix è fare logout e login da capo:${RESET}\n"
+    echo -e "  ${CYAN}1)${RESET} bw logout"
+    echo -e "  ${CYAN}2)${RESET} bw login"
+    echo -e "  ${CYAN}3)${RESET} Riprova marmitta --login\n"
+    read -rp "$(echo -e "${YELLOW}Vuoi che esegua bw logout + bw login ora? [Y/n]: ${RESET}")" fix < /dev/tty
+    if [[ ! "$fix" =~ ^[Nn]$ ]]; then
+      bw logout < /dev/tty > /dev/tty 2>&1
+      print_ok "Logout effettuato."
+      print_step "Login..."
+      local tmp2
+      tmp2=$(mktemp)
+      bw login < /dev/tty 2>&1 | tee "$tmp2" > /dev/tty
+      if grep -q "provided key is not the expected type" "$tmp2" 2>/dev/null; then
+        rm -f "$tmp2"
+        print_err "Errore persiste. Prova: bw logout && bw login manualmente nel terminale."
+      fi
+      BW_SESSION=$(grep 'BW_SESSION' "$tmp2" | sed 's/.*BW_SESSION="\([^"]*\)".*/\1/')
+      rm -f "$tmp2"
+      [[ -z "$BW_SESSION" ]] && print_err "Sessione non trovata dopo login."
+      export BW_SESSION
+      print_ok "Login completato."
     else
-        OS_TYPE="unknown"
-        PACKAGE_MANAGER="unknown"
+      print_err "Risolvi manualmente con: bw logout && bw login"
     fi
+    return
+  fi
 
-    echo "$OS_TYPE" "$DISTRO" "$PACKAGE_MANAGER"
+  # Estrai token dalla riga "bw list items --session TOKEN" — sempre intera, senza wrapping
+  BW_SESSION=$(grep -- "--session" "$tmp" | tail -1 | sed 's/.*--session //' | tr -d '%' | tr -d ' ')
+  rm -f "$tmp"
+  [[ -z "$BW_SESSION" ]] && print_err "Sessione non trovata nell'output di bw ${cmd}."
+  export BW_SESSION
+  print_ok "bw ${cmd} completato."
 }
 
-install_bw() {
-    if command -v bw &>/dev/null; then
-        print_green "✅ Bitwarden CLI già installato."
-        return
-    fi
+# ─────────────────────────────────────────────────────────────
+# === LOGIN / UNLOCK ===
+# ─────────────────────────────────────────────────────────────
+BW_STATUS=$(bw status 2>/dev/null | jq -r '.status // "unauthenticated"')
+print_info "Stato vault: ${BW_STATUS}"
 
-    print_yellow "➡️ Bitwarden CLI non trovato, provo a installarlo..."
+case "$BW_STATUS" in
+  unauthenticated) _bw_do "login"  ;;
+  locked)          _bw_do "unlock" ;;
+  unlocked)
+    print_ok "Vault già sbloccato."
+    [[ -z "$BW_SESSION" ]] && _bw_do "unlock"
+    ;;
+  *)
+    print_err "Stato Bitwarden sconosciuto: ${BW_STATUS}"
+    ;;
+esac
 
-    read -r OS DISTRO PKG_MANAGER <<< "$(detect_os_and_package_manager)"
-    echo "Rilevato OS: $OS, Distro: $DISTRO, Package manager: $PKG_MANAGER"
+# ─────────────────────────────────────────────────────────────
+# === CERCA ITEM "github-token" ===
+# ─────────────────────────────────────────────────────────────
+print_step "Cerco item 'github-token' nel vault..."
 
-    case "$PKG_MANAGER" in
-        apt)    sudo apt update && sudo apt install -y bw ;;
-        dnf)    sudo dnf install -y bw ;;
-        yum)    sudo yum install -y bw ;;
-        pacman) sudo pacman -Sy --noconfirm bitwarden-cli ;;
-        apk)    sudo apk add bw ;;
-        brew)   brew install bitwarden-cli ;;
-        choco)  choco install bitwarden-cli -y ;;
-        *)
-            print_red "❌ Package manager non riconosciuto. Installa Bitwarden CLI manualmente da https://bitwarden.com/download/"
-            return 1
-            ;;
-    esac
+# Verifica che BW_SESSION sia stato estratto correttamente
+if [[ -z "$BW_SESSION" ]]; then
+  print_err "BW_SESSION vuoto — estrazione sessione fallita.
+Prova: bw unlock manualmente e copia il token in BW_SESSION."
+fi
+print_info "Sessione: ${BW_SESSION:0:10}... (${#BW_SESSION} char)"
 
-    print_green "✅ Bitwarden CLI installato con successo."
-}
+ITEM=$(bw get item "github-token" --session "$BW_SESSION" 2>/dev/null)
 
-bw_login_and_unlock() {
-    print_yellow "➡️ Verifica login su Bitwarden CLI..."
+if [[ -z "$ITEM" || "$ITEM" == "null" ]]; then
+  print_warn "Item 'github-token' non trovato. Ricerca manuale..."
+  read -rp "$(echo -e "${YELLOW}🔍 Nome esatto item Bitwarden: ${RESET}")" item_name < /dev/tty
+  ITEM=$(bw get item "$item_name" --session "$BW_SESSION" < /dev/tty 2>/dev/null)
+  [[ -z "$ITEM" || "$ITEM" == "null" ]] && print_err "Item '${item_name}' non trovato."
+fi
 
-    if bw login --check &>/dev/null; then
-        print_green "✅ Sei già loggato, sessione attiva."
+ITEM_NAME=$(echo "$ITEM" | jq -r '.name')
+print_ok "Item trovato: ${CYAN}${ITEM_NAME}${RESET}"
 
-        # Sblocca vault se bloccato
-        UNLOCK_OUTPUT=$(bw unlock --raw --session "$BW_SESSION" 2>/dev/null || true)
-        if [ -z "$UNLOCK_OUTPUT" ]; then
-            print_yellow "🔓 Vault bloccato, inserisci la master password per sbloccare..."
-            UNLOCK_OUTPUT=$(bw unlock --raw)
-        fi
-    else
-        print_yellow "🔄 Non sei loggato, eseguo logout (se necessario) e login..."
+# ─────────────────────────────────────────────────────────────
+# === ESTRAI TOKEN (note → password → campi custom hidden) ===
+# ─────────────────────────────────────────────────────────────
+print_step "Estraggo token..."
 
-        # Logout preventivo per evitare errori di cambio server
-        bw logout || true
+# Prende l'ultima riga non vuota delle note — sempre il token più recente
+GITHUB_TOKEN=$(echo "$ITEM" | jq -r '.notes // empty' | grep -v '^\s*$' | tail -1 | tr -d '[:space:]')
 
-        # Configura server
-        bw config server https://vault.bitwarden.eu
+if [[ -z "$GITHUB_TOKEN" ]]; then
+  print_warn "Note vuote — provo campo password..."
+  GITHUB_TOKEN=$(echo "$ITEM" | jq -r '.login.password // empty' | tr -d '[:space:]')
+fi
 
-        # Esegui login
-        UNLOCK_OUTPUT=$(bw login --raw)
-        if [ $? -ne 0 ] || [ -z "$UNLOCK_OUTPUT" ]; then
-            print_red "❌ Login fallito. Controlla email e password."
-            return 1
-        fi
+if [[ -z "$GITHUB_TOKEN" ]]; then
+  print_warn "Password vuota — provo campi custom hidden..."
+  GITHUB_TOKEN=$(echo "$ITEM" | jq -r '.fields[]? | select(.type == 1) | .value' 2>/dev/null | head -1 | tr -d '[:space:]')
+fi
 
-        export BW_SESSION="$UNLOCK_OUTPUT"
+[[ -z "$GITHUB_TOKEN" ]] && print_err "Token non trovato in note, password né campi custom."
 
-        # Sblocca vault
-        print_yellow "🔓 Sblocco del vault Bitwarden..."
-        UNLOCK_OUTPUT=$(bw unlock --raw)
-    fi
+if [[ "$GITHUB_TOKEN" != ghp_* && "$GITHUB_TOKEN" != github_pat_* ]]; then
+  print_warn "Il valore non sembra un GitHub PAT (non inizia con ghp_ o github_pat_)."
+  read -rp "$(echo -e "${YELLOW}Continuare? [y/N]: ${RESET}")" cont < /dev/tty
+  [[ ! "$cont" =~ ^[Yy]$ ]] && exit 1
+fi
 
-    if [ -z "$UNLOCK_OUTPUT" ]; then
-        print_red "❌ Errore: impossibile sbloccare Bitwarden."
-        return 1
-    fi
+# ─────────────────────────────────────────────────────────────
+# === VALIDA TOKEN ===
+# ─────────────────────────────────────────────────────────────
+print_info "Token estratto: ${DARK_GRAY}${GITHUB_TOKEN:0:20}...${RESET} (${#GITHUB_TOKEN} char)"
+print_step "Valido il token su GitHub..."
+GH_USER=$(curl -s --max-time 10   -H "Authorization: token ${GITHUB_TOKEN}"   https://api.github.com/user | jq -r '.login // empty')
 
-    export BW_SESSION="$UNLOCK_OUTPUT"
-    print_green "✅ Vault Bitwarden sbloccato, BW_SESSION impostato."
-}
+if [[ -z "$GH_USER" ]]; then
+  echo -e "
+${YELLOW}💡 Debug suggerimenti:${RESET}"
+  echo -e "  ${DARK_GRAY}1)${RESET} Aggiorna il token in Bitwarden con uno valido"
+  echo -e "  ${DARK_GRAY}2)${RESET} Fai bw logout && bw login per forzare un sync completo"
+  echo -e "  ${DARK_GRAY}3)${RESET} Verifica il token su: ${CYAN}https://github.com/settings/tokens${RESET}"
+  print_err "Token non valido o GitHub non raggiungibile."
+fi
+print_ok "Token valido — utente: ${CYAN}${GH_USER}${RESET}"
 
+# ─────────────────────────────────────────────────────────────
+# === SALVA NEL CONFIG MARMITTA ===
+# ─────────────────────────────────────────────────────────────
+print_step "Salvo nel config di marmitta..."
+mkdir -p "$MARMITTA_CONFIG_DIR"
+chmod 700 "$MARMITTA_CONFIG_DIR"
 
-retrieve_github_token() {
-    print_yellow "🔍 Recupero del GitHub token da Bitwarden..."
-    local token_json
-    token_json=$(bw get item "github-token" --session "$BW_SESSION" 2>/dev/null) || {
-        print_red "❌ Impossibile recuperare il token da Bitwarden."
-        return 1
-    }
+if [[ -f "$MARMITTA_CONFIG_FILE" ]]; then
+  if grep -q "^GITHUB_TOKEN=" "$MARMITTA_CONFIG_FILE"; then
+    sed -i "s|^GITHUB_TOKEN=.*|GITHUB_TOKEN=\"${GITHUB_TOKEN}\"|" "$MARMITTA_CONFIG_FILE"
+  else
+    echo "GITHUB_TOKEN=\"${GITHUB_TOKEN}\"" >> "$MARMITTA_CONFIG_FILE"
+  fi
+else
+  cat > "$MARMITTA_CONFIG_FILE" <<EOF
+# Marmitta config — generato il $(date)
+GITHUB_TOKEN="${GITHUB_TOKEN}"
+DEFAULT_BRANCH="master"
+EOF
+fi
 
-    # Assumendo che il token sia nella proprietà .notes
-    GITHUB_TOKEN=$(echo "$token_json" | jq -r '.notes') || {
-        print_red "❌ Errore parsing token GitHub."
-        return 1
-    }
+chmod 600 "$MARMITTA_CONFIG_FILE"
+print_ok "Token salvato in ${MARMITTA_CONFIG_FILE} ${DARK_GRAY}(chmod 600)${RESET}"
+export GITHUB_TOKEN
 
-    if [ -z "$GITHUB_TOKEN" ] || [ "$GITHUB_TOKEN" = "null" ]; then
-        print_red "❌ Token GitHub vuoto o non trovato."
-        return 1
-    fi
+# ─────────────────────────────────────────────────────────────
+# === LOCK VAULT ===
+# ─────────────────────────────────────────────────────────────
+echo ""
+read -rp "$(echo -e "${YELLOW}🔒 Bloccare il vault ora? [Y/n]: ${RESET}")" lock < /dev/tty
+if [[ ! "$lock" =~ ^[Nn]$ ]]; then
+  bw lock >/dev/null 2>&1
+  unset BW_SESSION
+  print_ok "Vault bloccato."
+fi
 
-    export GITHUB_TOKEN
-    print_green "✅ GitHub token recuperato e impostato come variabile d'ambiente."
-}
-
-update_shell_rc_with_token() {
-    local shell_rc_file
-
-    if [[ $SHELL == */zsh ]]; then
-        shell_rc_file="$HOME/.zshrc"
-    elif [[ $SHELL == */bash ]]; then
-        shell_rc_file="$HOME/.bashrc"
-    else
-        print_red "❌ Shell non riconosciuta, modifica manuale necessaria."
-        return 1
-    fi
-
-    if grep -q "^export GITHUB_TOKEN=" "$shell_rc_file"; then
-        sed -i.bak "s|^export GITHUB_TOKEN=.*|export GITHUB_TOKEN=\"$GITHUB_TOKEN\"|" "$shell_rc_file"
-    else
-        echo "export GITHUB_TOKEN=\"$GITHUB_TOKEN\"" >> "$shell_rc_file"
-    fi
-
-    print_green "✅ Variabile GITHUB_TOKEN aggiornata in $shell_rc_file"
-}
-
-
-### MAIN
-
-install_bw 
-bw_login_and_unlock
-retrieve_github_token 
-update_shell_rc_with_token 
-
-print_yellow "⚠️ Ora esegui 'source ~/.zshrc' o apri una nuova shell per caricare il token."
+echo -e "\n${GREEN}${BOLD}🎉 Login completato!${RESET}"
+echo -e "${DARK_GRAY}  Utente GitHub: ${RESET}${GH_USER}"
+echo -e "${DARK_GRAY}  Config:        ${RESET}${MARMITTA_CONFIG_FILE}\n"
