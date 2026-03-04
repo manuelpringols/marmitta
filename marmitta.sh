@@ -879,29 +879,47 @@ do_login() {
 # === HANDLER: PITONZI ===
 # ─────────────────────────────────────────────────────────────
 call_pitonzi() {
-  echo -e "${RED}██████╗ ${BLOOD_RED}██╗████████╗${GREEN_NEON} ██████╗ ${GREEN_TOXIC}███╗   ██╗${RED}███████╗${RESET}"
-  sleep 0.04
-  echo -e "${DARK_RED}██╔══██╗${RED}██║╚══██╔══╝${GREEN_SLIME} ██╔═══██╗${GREEN_NEON}████╗  ██║${DARK_RED}██╔════╝${RESET}"
-  sleep 0.04
-  echo -e "${RED}██████╔╝${BLOOD_RED}██║   ██║   ${GREEN_TOXIC}██║   ██║${GREEN_SLIME}██╔██╗ ██║${RED}█████╗${RESET}"
-  sleep 0.04
-  echo -e "${DARK_RED}██╔═══╝ ${RED}██║   ██║   ${GREEN_TOXIC}██║   ██║${GREEN_DARK}██║╚██╗██║${RED}██╔══╝${RESET}"
-  sleep 0.08
-  echo -e "${RED}██║     ${BLOOD_RED}██║   ██║  ${GREEN_SLIME}╚██████╔╝${GREEN_TOXIC}██║ ╚████║${GREEN_NEON}██║${RESET}\n"
+  # ── Cerca una source che abbia la cartella pitonzi ──
+  local pitonzi_source=""
+  while IFS= read -r src; do
+    local r b
+    r=$(echo "$src" | cut -d'|' -f2 | xargs)
+    b=$(echo "$src" | cut -d'|' -f3 | xargs)
+    b="${b:-${DEFAULT_BRANCH}}"
+    # Controlla se esiste run_pitonzi.sh nel repo
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" "${AUTH_HEADER[@]}" \
+      "https://api.github.com/repos/${r}/contents/pitonzi" 2>/dev/null || echo "000")
+    if [[ "$http_code" == "200" ]]; then
+      pitonzi_source="${src}"
+      break
+    fi
+  done < <(get_sources)
 
-  local first_source repo branch
-  first_source=$(get_sources | head -1)
-  repo=$(echo "$first_source"   | cut -d'|' -f2 | xargs)
-  branch=$(echo "$first_source" | cut -d'|' -f3 | xargs)
+  if [[ -z "$pitonzi_source" ]]; then
+    print_warn "Nessun repo configurato contiene una cartella 'pitonzi'."
+    echo -e "${DARK_GRAY}  Aggiungi un repo con la struttura: repo/pitonzi/run_pitonzi.sh${RESET}"
+    read -rp "$(echo -e "${YELLOW}Aggiungere un repo Python ora? [y/N]: ${RESET}")" ans
+    [[ ! "$ans" =~ ^[Yy]$ ]] && return 0
+    do_add_source
+    call_pitonzi "$@"
+    return
+  fi
+
+  local repo branch
+  repo=$(echo "$pitonzi_source"   | cut -d'|' -f2 | xargs)
+  branch=$(echo "$pitonzi_source" | cut -d'|' -f3 | xargs)
   branch="${branch:-${DEFAULT_BRANCH}}"
 
   local tmp
   tmp=$(mktemp)
-  curl -fsSL "https://raw.githubusercontent.com/${repo}/${branch}/ai/pitonzi/run_pitonzi.sh" -o "$tmp"
+  curl -fsSL "https://raw.githubusercontent.com/${repo}/${branch}/pitonzi/run_pitonzi.sh" -o "$tmp" \
+    || { print_err "Download run_pitonzi.sh fallito."; rm -f "$tmp"; return 1; }
   chmod +x "$tmp"
   bash "$tmp" "$@"
   rm -f "$tmp"
 }
+
 
 # ─────────────────────────────────────────────────────────────
 # === HANDLER: SLITHER PUSH ===
