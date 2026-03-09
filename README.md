@@ -1,6 +1,6 @@
 # MARMITTA 😈
 
-> A terminal-based remote Bash script launcher with interactive navigation, Bitwarden authentication, and GitHub integration.
+> Un launcher di script Bash remoti con navigazione interattiva, autenticazione Bitwarden e integrazione GitHub.
 
 ```
 █▀▄▀█ ██   █▄▄▄▄ █▀▄▀█ ▄█    ▄▄▄▄▀    ▄▄▄▄▀ ██
@@ -13,28 +13,29 @@
 
 ---
 
-## What is Marmitta?
+## Cos'è Marmitta?
 
-Marmitta is a CLI tool that lets you **browse, preview, and execute Bash scripts stored in GitHub repositories** — directly from your terminal, without cloning anything.
+Marmitta è uno strumento CLI che ti permette di **sfogliare, visualizzare in anteprima ed eseguire script Bash salvati su repository GitHub** — direttamente dal terminale, senza dover clonare nulla.
 
-It uses `fzf` for interactive navigation, the GitHub API to fetch repo contents, and supports multiple sources (repositories) with optional GitHub token authentication via Bitwarden.
-
----
-
-## Features
-
-- **Interactive 3-level navigation** — category → subfolder → script, powered by `fzf`
-- **Code preview** — inspect any script before running it
-- **Multiple sources** — add and switch between different GitHub repos
-- **GitHub authentication** — via Bitwarden CLI for secure token retrieval
-- **Execution history** — quickly re-run recent scripts
-- **Flat search** — search all scripts across the entire repo at once
-- **Self-update** — `marmitta -u` fetches and installs the latest version
-- **Animated ASCII banner** at startup with neon glow effect
+Usa `fzf` per la navigazione interattiva, le API GitHub per recuperare i contenuti dei repo, e supporta più sorgenti (repository) con autenticazione opzionale tramite token GitHub via Bitwarden.
 
 ---
 
-## Installation
+## Funzionalità
+
+- **Navigazione interattiva a 3 livelli** — categoria → sottocartella → script, con `fzf`
+- **Anteprima del codice** — ispeziona qualsiasi script prima di eseguirlo, riapribile più volte
+- **Sorgenti multiple** — aggiungi e passa tra diversi repository GitHub
+- **Rimozione sorgenti** — rimuovi una sorgente configurata in qualsiasi momento
+- **Autenticazione GitHub** — via Bitwarden CLI per recupero sicuro del token
+- **Cronologia esecuzioni** — riesegui rapidamente gli script recenti con ricerca `fzf`
+- **Ricerca globale** — cerca tra tutti gli script del repo in una sola schermata
+- **Aggiornamento automatico** — `marmitta -u` scarica e installa l'ultima versione
+- **Banner ASCII animato** all'avvio con effetto glow verde neon
+
+---
+
+## Installazione
 
 ```bash
 sudo curl -fsSL https://raw.githubusercontent.com/manuelpringols/marmitta/master/marmitta.sh \
@@ -42,192 +43,213 @@ sudo curl -fsSL https://raw.githubusercontent.com/manuelpringols/marmitta/master
   sudo chmod +x /usr/local/bin/marmitta
 ```
 
-**Dependencies** (auto-installed on first run if missing):
+**Dipendenze** (installate automaticamente al primo avvio se mancanti):
 
-- `jq` — JSON parsing
-- `fzf` — interactive fuzzy finder
-- `curl` — HTTP requests
-- `bw` (Bitwarden CLI) — optional, for authenticated login
+| Strumento | Scopo |
+|---|---|
+| `jq` | Parsing JSON |
+| `fzf` | Ricerca fuzzy interattiva |
+| `curl` | Chiamate HTTP alle API GitHub |
+| `bw` (Bitwarden CLI) | Opzionale — per il login autenticato |
 
 ---
 
-## First Run
+## Prima esecuzione
 
-On the first execution, Marmitta detects no existing configuration and starts an onboarding flow:
+Al primo avvio, Marmitta rileva l'assenza di configurazione e avvia un flusso di onboarding:
 
 ```
 👋 Benvenuto in Marmitta!
 
-  For accessing private repos and increasing the GitHub rate limit,
-  you can authenticate with a GitHub token via Bitwarden.
+  Per accedere a repo privati e aumentare il rate limit GitHub,
+  puoi autenticarti con un token GitHub tramite Bitwarden.
 
-  [l] Login with GitHub (recommended)
-  [c] Continue without login (public limit: 60 req/h)
+  [l] Login con GitHub (consigliato)
+  [c] Continua senza login (limite pubblico: 60 req/h)
 ```
 
-- Press `l` to authenticate via Bitwarden (recommended)
-- Press `c` to start without authentication (read-only, public repos, 60 API req/h)
+- Premi `l` per autenticarti via Bitwarden (consigliato)
+- Premi `c` per avviare senza autenticazione (solo repo pubblici, 60 req/h)
 
-After onboarding, you will be prompted to add your first script source (a GitHub repository).
+Dopo l'onboarding, ti verrà chiesto di aggiungere la prima sorgente (un repository GitHub).
 
 ---
 
-## Login & Authentication
+## Login e autenticazione
 
-Marmitta integrates with **Bitwarden CLI** to securely retrieve a GitHub Personal Access Token — no plain-text tokens in config files.
+Marmitta si integra con **Bitwarden CLI** per recuperare in modo sicuro un GitHub Personal Access Token — nessun token in chiaro nei profili shell o nelle variabili d'ambiente.
 
 ```bash
 marmitta --login
 ```
 
-The login flow:
-1. Checks Bitwarden vault status (`unauthenticated` / `locked` / `unlocked`)
-2. Runs `bw login` if needed (full interactive TTY, email and master password prompted)
-3. Retrieves the session via `bw unlock --raw`
-4. Searches for an item named `github-token` in your vault
-5. Extracts the token from notes → password field → custom hidden fields (in order)
-6. Validates the token against the GitHub API
-7. Saves it to `~/.config/marmitta/config` (chmod 600)
-8. Optionally locks the vault again
+Il flusso di login:
 
-> The token is stored locally and used automatically on subsequent runs.
+1. Controlla lo stato del vault Bitwarden (`unauthenticated` / `locked` / `unlocked`)
+2. Esegue `bw login` se necessario — TTY reale ereditato, email e master password richiesti correttamente
+3. Recupera la sessione vault via `bw unlock --raw`
+4. Cerca un item chiamato `github-token` nel vault
+5. Estrae il token da: note → campo password → campi custom hidden (in ordine di priorità)
+6. Valida il token tramite le API GitHub
+7. Salva il token in `~/.config/marmitta/config` con `chmod 600`
+8. Blocca opzionalmente il vault al termine
+
+> Nelle esecuzioni successive, il token viene caricato automaticamente dal config locale.
 
 ---
 
-## Usage
+## Utilizzo
 
-### Launch the main menu
+### Avviare il menu principale
 
 ```bash
 marmitta
 ```
 
-Starts the animated banner, then opens the interactive 3-level script browser.
+Mostra il banner animato, poi apre il browser interattivo a 3 livelli.
 
-### Navigation keys (script browser)
+### Navigazione
 
-| Key | Action |
+| Tasto | Azione |
 |---|---|
-| `↑ / ↓` | Navigate |
-| `Enter` | Select |
-| `ESC` | Go back one level |
+| `↑ / ↓` oppure `j / k` | Scorrere la lista |
+| `Invio` | Selezionare / confermare |
+| `ESC` | Tornare al livello precedente |
+| Digitare | Ricerca fuzzy nella lista corrente |
 
-### Script action menu
+### Menu azione script
 
-After selecting a script:
+Dopo aver selezionato uno script:
 
 ```
 [ INVIO ] Esegui   [ i ] Parametri   [ p ] Preview   [ q ] Annulla
 ```
 
-| Key | Action |
+| Tasto | Azione |
 |---|---|
-| `Enter` | Run the script |
-| `i` | Run with custom arguments |
-| `p` | Preview script source code (press `p` again to re-read) |
-| `q` | Cancel and go back |
+| `Invio` | Scarica ed esegui lo script |
+| `i` | Esegui con argomenti personalizzati |
+| `p` | Anteprima del codice sorgente (premi `p` di nuovo per rileggere) |
+| `q` | Annulla e torna alla lista |
 
 ---
 
-## Commands
+## Comandi
 
-### Navigation
+### Navigazione ed esecuzione
 
 ```bash
-marmitta                  # Open interactive browser
-marmitta -s, --search     # Flat search across all scripts
-marmitta -t, --tree       # Show repo file tree
-marmitta -l, --last       # Re-run the last executed script
-marmitta -H, --history    # Browse execution history with fzf
+marmitta                  # Apre il browser interattivo
+marmitta -s, --search     # Ricerca globale su tutti gli script
+marmitta -t, --tree       # Mostra la struttura completa del repo
+marmitta -l, --last       # Riesegue l'ultimo script eseguito
+marmitta -H, --history    # Cronologia esecuzioni con fzf
 ```
 
-### Sources
+### Gestione sorgenti
 
 ```bash
-marmitta --add-source     # Add a GitHub repo as a source
-marmitta --remove-source  # Remove a configured source
+marmitta --add-source     # Aggiunge un repo GitHub come sorgente
+marmitta --remove-source  # Rimuove una sorgente configurata
 ```
 
-### Authentication & Config
+### Autenticazione e configurazione
 
 ```bash
-marmitta --login          # Authenticate via Bitwarden → saves GitHub token
-marmitta --setup          # Reconfigure token and default branch
-marmitta --gen-desc       # Regenerate script descriptions cache
+marmitta --login          # Autenticazione via Bitwarden → salva token GitHub
+marmitta --setup          # Riconfigura token e branch manualmente
+marmitta --gen-desc       # Rigenera la cache delle descrizioni script
 ```
 
-### Update & Reset
+### Aggiornamento e reset
 
 ```bash
-marmitta -u               # Update marmitta to the latest version
-marmitta --reset          # Delete all config, sources, and cache
+marmitta -u               # Aggiorna Marmitta all'ultima versione
+marmitta --reset          # Elimina config, sorgenti e cache
+marmitta -h, --help       # Mostra tutti i comandi disponibili
 ```
 
-### Extras
+### Extra
 
 ```bash
-marmitta -py              # Launch Python scripts (pitonzi integration)
-marmitta -Gsp             # Quick git push helper (slither_push)
-marmitta -h, --help       # Show all available commands
+marmitta -py              # Launcher script Python (integrazione pitonzi)
+marmitta -Gsp             # Push git rapido (slither_push)
 ```
 
 ---
 
-## Source Repositories
+## Repository sorgenti
 
-A **source** is a GitHub repository that contains Bash scripts organized in folders.
+Una **sorgente** è un repository GitHub che contiene script Bash organizzati in cartelle per categoria.
 
 ```bash
 marmitta --add-source
 ```
 
-You will be prompted for:
-- A label (e.g. `My Scripts`)
-- A repository (e.g. `username/scripts`)
-- A branch (default: `master`)
+Verranno richiesti:
+- Un'etichetta (es. `Script personali`)
+- Un repository nel formato `user/repo` (es. `manuelpringols/scripts`)
+- Un branch (default: `master`)
 
-Marmitta expects the repo to optionally include:
+Per rimuovere una sorgente:
 
-| File | Purpose |
-|---|---|
-| `script_desc.txt` | Short descriptions for each script (`path/to/script.sh    # Description`) |
-| `category_desc.txt` | Short descriptions for each category folder |
+```bash
+marmitta --remove-source
+```
 
-These files are cached locally for 24 hours to minimize API calls.
+Un selettore `fzf` permette di scegliere la sorgente da eliminare, con richiesta di conferma.
+
+### Struttura consigliata del repo
+
+```
+my-scripts/
+├── category_desc.txt       # Descrizioni delle categorie
+├── script_desc.txt         # Descrizioni degli script
+├── networking/
+│   └── check_ports.sh
+├── system/
+│   ├── report.sh
+│   └── cleanup.sh
+└── setup/
+    └── install_tools.sh
+```
+
+| File | Formato | Scopo |
+|---|---|---|
+| `script_desc.txt` | `path/to/script.sh    # Descrizione` | Descrizione breve per ogni script |
+| `category_desc.txt` | `nome_categoria    # Descrizione` | Descrizione breve per ogni categoria |
+
+Le descrizioni vengono messe in cache localmente per 24 ore per minimizzare le chiamate API GitHub.
 
 ---
 
-## Configuration
+## Configurazione
 
-Config is stored in `~/.config/marmitta/`:
+Tutta la configurazione è in `~/.config/marmitta/`:
 
-| File | Purpose |
+| File/Dir | Scopo |
 |---|---|
-| `config` | GitHub token and default branch (chmod 600) |
-| `sources` | List of configured repos (`label\|user/repo\|branch`) |
-| `cache/` | Cached script and category descriptions (TTL: 24h) |
+| `config` | Token GitHub e branch di default (`chmod 600`) |
+| `sources` | Lista dei repo configurati (`label\|user/repo\|branch`) |
+| `cache/` | Cache descrizioni script e categorie (TTL: 24h) |
 
----
-
-## Authentication Without Bitwarden
-
-If you don't use Bitwarden, you can set the token manually via:
+### Setup manuale del token (senza Bitwarden)
 
 ```bash
 marmitta --setup
 ```
 
-Or by editing `~/.config/marmitta/config` directly:
+Oppure modifica direttamente `~/.config/marmitta/config`:
 
 ```bash
 GITHUB_TOKEN="ghp_yourtoken"
 DEFAULT_BRANCH="master"
 ```
 
-Without a token, Marmitta works with public repositories at the GitHub public API limit (60 requests/hour).
+Senza token, Marmitta funziona solo con repository pubblici, con il limite pubblico delle API GitHub (60 richieste/ora).
 
 ---
 
-## License
+## Licenza
 
-MIT
+E CAZZ TUOJ TE FA
