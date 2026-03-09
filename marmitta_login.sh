@@ -43,84 +43,63 @@ BW_VERSION=$(bw --version 2>/dev/null)
 print_info "Bitwarden CLI versione: ${BW_VERSION}"
 
 # ─────────────────────────────────────────────────────────────
-# === FUNZIONE UNLOCK con rilevamento errore Argon2 ===
+# === FUNZIONI BW ===
 # ─────────────────────────────────────────────────────────────
+
+# Esegue bw login o bw logout con TTY reale ereditato (nessuna pipe).
+# Inquirer.js funziona correttamente solo con stdin/stdout collegati al TTY.
 _bw_do() {
   local cmd="$1"
-  local tmp
-  tmp=$(mktemp)
-
   print_step "bw ${cmd} in corso..."
-  bw "$cmd" < /dev/tty 2>&1 | tee "$tmp" > /dev/tty
-
-  # Controlla errore KDF Argon2
-  if grep -q "provided key is not the expected type" "$tmp" 2>/dev/null; then
-    rm -f "$tmp"
-    echo -e "\n${RED}${BOLD}⚠️  Errore KDF Argon2 rilevato${RESET}\n"
-    echo -e "${YELLOW}Il tuo vault usa Argon2id ma la sessione locale è cached con il vecchio"
-    echo -e "algoritmo PBKDF2. Il fix è fare logout e login da capo:${RESET}\n"
-    echo -e "  ${CYAN}1)${RESET} bw logout"
-    echo -e "  ${CYAN}2)${RESET} bw login"
-    echo -e "  ${CYAN}3)${RESET} Riprova marmitta --login\n"
-    read -rp "$(echo -e "${YELLOW}Vuoi che esegua bw logout + bw login ora? [Y/n]: ${RESET}")" fix < /dev/tty
-    if [[ ! "$fix" =~ ^[Nn]$ ]]; then
-      bw logout < /dev/tty > /dev/tty 2>&1
-      print_ok "Logout effettuato."
-      print_step "Login..."
-      local tmp2
-      tmp2=$(mktemp)
-      bw login < /dev/tty 2>&1 | tee "$tmp2" > /dev/tty
-      if grep -q "provided key is not the expected type" "$tmp2" 2>/dev/null; then
-        rm -f "$tmp2"
-        print_err "Errore persiste. Prova: bw logout && bw login manualmente nel terminale."
-      fi
-      BW_SESSION=$(grep 'BW_SESSION' "$tmp2" | sed 's/.*BW_SESSION="\([^"]*\)".*/\1/')
-      rm -f "$tmp2"
-      [[ -z "$BW_SESSION" ]] && print_err "Sessione non trovata dopo login."
-      export BW_SESSION
-      print_ok "Login completato."
-    else
-      print_err "Risolvi manualmente con: bw logout && bw login"
-    fi
-    return
+  NODE_NO_WARNINGS=1 bw "$cmd" < /dev/tty > /dev/tty 2>&1
+  local exit_code=$?
+  if [[ $exit_code -ne 0 ]]; then
+    print_err "bw ${cmd} fallito (exit ${exit_code}). Prova: bw logout && bw login manualmente."
+    return 1
   fi
-
-  # Estrai token dalla riga "bw list items --session TOKEN" — sempre intera, senza wrapping
-  BW_SESSION=$(grep -- "--session" "$tmp" | tail -1 | sed 's/.*--session //' | tr -d '%' | tr -d ' ')
-  rm -f "$tmp"
-  [[ -z "$BW_SESSION" ]] && print_err "Sessione non trovata nell'output di bw ${cmd}."
-  export BW_SESSION
   print_ok "bw ${cmd} completato."
+}
+
+# Recupera il session token tramite --raw: stampa solo il token grezzo,
+# nessun parsing dell'output necessario.
+_bw_get_session() {
+  print_step "Recupero sessione vault (master password richiesta)..."
+  local session
+  session=$(NODE_NO_WARNINGS=1 bw unlock --raw < /dev/tty 2>/dev/null)
+  if [[ -z "$session" ]]; then
+    print_err "Sessione non ottenuta. Prova: bw unlock --raw manualmente."
+    return 1
+  fi
+  BW_SESSION="$session"
+  export BW_SESSION
+  print_ok "Sessione ottenuta."
 }
 
 # ─────────────────────────────────────────────────────────────
 # === LOGIN / UNLOCK ===
 # ─────────────────────────────────────────────────────────────
-BW_STATUS=$(bw status 2>/dev/null | jq -r '.status // "unauthenticated"')
+BW_STATUS=$(NODE_NO_WARNINGS=1 bw status 2>/dev/null | jq -r '.status // "unauthenticated"')
 print_info "Stato vault: ${BW_STATUS}"
 
 case "$BW_STATUS" in
-  unauthenticated) _bw_do "login"  ;;
-  locked)          _bw_do "unlock" ;;
-  unlocked)
-    print_ok "Vault già sbloccato."
-    [[ -z "$BW_SESSION" ]] && _bw_do "unlock"
+  unauthenticated)
+    _bw_do "login" || exit 1
+    ;;
+  locked|unlocked)
+    : # già autenticato — _bw_get_session chiederà la master password se locked
     ;;
   *)
     print_err "Stato Bitwarden sconosciuto: ${BW_STATUS}"
     ;;
 esac
 
+# Recupera sempre la sessione via --raw
+_bw_get_session || exit 1
+
 # ─────────────────────────────────────────────────────────────
 # === CERCA ITEM "github-token" ===
 # ─────────────────────────────────────────────────────────────
 print_step "Cerco item 'github-token' nel vault..."
-
-# Verifica che BW_SESSION sia stato estratto correttamente
-if [[ -z "$BW_SESSION" ]]; then
-  print_err "BW_SESSION vuoto — estrazione sessione fallita.
-Prova: bw unlock manualmente e copia il token in BW_SESSION."
-fi
 print_info "Sessione: ${BW_SESSION:0:10}... (${#BW_SESSION} char)"
 
 ITEM=$(bw get item "github-token" --session "$BW_SESSION" 2>/dev/null)

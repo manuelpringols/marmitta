@@ -127,9 +127,48 @@ _setup_auth() {
   fi
 }
 
-setup_config() {
-  echo -e "\n${CYAN}${BOLD}⚙️  Setup iniziale di Marmitta${RESET}\n"
+_ensure_dirs() {
   mkdir -p "$MARMITTA_CONFIG_DIR"
+  if [[ ! -f "$MARMITTA_CONFIG_FILE" ]]; then
+    touch "$MARMITTA_CONFIG_FILE"
+    chmod 600 "$MARMITTA_CONFIG_FILE"
+  fi
+  if [[ ! -f "$MARMITTA_SOURCES_FILE" ]]; then
+    cat > "$MARMITTA_SOURCES_FILE" <<'EOF'
+# Marmitta sources — una per riga: label|user/repo|branch
+# Esempio: Scripts personali|manuelpringols/scripts|master
+EOF
+  fi
+}
+
+_first_run_onboarding() {
+  echo -e "\n${CYAN}${BOLD}👋 Benvenuto in Marmitta!${RESET}\n"
+  echo -e "${DARK_GRAY}  Per accedere a repo privati e aumentare il rate limit GitHub,"
+  echo -e "  puoi autenticarti con un token GitHub tramite Bitwarden.${RESET}\n"
+  echo -e "  ${GREEN}[l]${RESET} Login con GitHub ${DARK_GRAY}(consigliato)${RESET}"
+  echo -e "  ${YELLOW}[c]${RESET} Continua senza login ${DARK_GRAY}(limite pubblico: 60 req/h)${RESET}\n"
+
+  local key
+  read -rsn1 key
+  case "$key" in
+    l|L)
+      do_login
+      ;;
+    *)
+      cat > "$MARMITTA_CONFIG_FILE" <<EOF
+# Marmitta config — generato il $(date)
+GITHUB_TOKEN=""
+DEFAULT_BRANCH="master"
+EOF
+      chmod 600 "$MARMITTA_CONFIG_FILE"
+      print_info "Avvio senza autenticazione. Usa 'marmitta --login' per autenticarti in seguito."
+      ;;
+  esac
+}
+
+setup_config() {
+  echo -e "\n${CYAN}${BOLD}⚙️  Setup di Marmitta${RESET}\n"
+  _ensure_dirs
 
   local github_token default_branch
   read -rp "$(echo -e "${YELLOW}🔑 GitHub token (vuoto = limite pubblico 60 req/h): ${RESET}")" github_token
@@ -141,30 +180,22 @@ setup_config() {
 GITHUB_TOKEN="${github_token}"
 DEFAULT_BRANCH="${default_branch}"
 EOF
-
+  chmod 600 "$MARMITTA_CONFIG_FILE"
   print_ok "Config salvato in ${MARMITTA_CONFIG_FILE}"
-
-  if [[ ! -f "$MARMITTA_SOURCES_FILE" ]]; then
-    cat > "$MARMITTA_SOURCES_FILE" <<'EOF'
-# Marmitta sources — una per riga: label|user/repo|branch
-# Esempio: Scripts personali|manuelpringols/scripts|master
-EOF
-    print_info "File sources creato in ${MARMITTA_SOURCES_FILE}"
-    echo -e "${YELLOW}Aggiungi almeno una source con: ${CYAN}marmitta --add-source${RESET}\n"
-  fi
-
   load_config
 }
 
 ensure_config() {
-  if [[ ! -f "$MARMITTA_CONFIG_FILE" ]]; then
-    echo -e "\n${YELLOW}⚠️  Prima esecuzione rilevata.${RESET}"
-    setup_config
-  else
-    load_config
+  _ensure_dirs
+
+  # Prima esecuzione: config vuoto → onboarding
+  if [[ ! -s "$MARMITTA_CONFIG_FILE" ]]; then
+    _first_run_onboarding
   fi
 
-  if [[ ! -f "$MARMITTA_SOURCES_FILE" ]] || ! grep -qv '^#' "$MARMITTA_SOURCES_FILE" 2>/dev/null; then
+  load_config
+
+  if ! grep -qv '^#' "$MARMITTA_SOURCES_FILE" 2>/dev/null; then
     echo -e "\n${YELLOW}⚠️  Nessuna source configurata.${RESET}"
     read -rp "Vuoi aggiungerne una ora? [y/N]: " ans
     [[ "$ans" =~ ^[Yy]$ ]] && do_add_source || exit 0
@@ -1141,6 +1172,11 @@ case "${1:-}" in
   -h|--help)        print_help;    exit 0 ;;
   --reset)          do_reset;      exit 0 ;;
   -u)               do_update;     exit 0 ;;
+  --login)
+    _ensure_dirs
+    do_login
+    exit 0
+    ;;
 esac
 
 ensure_config
@@ -1148,7 +1184,6 @@ ensure_config
 # Flag che richiedono config ma non source
 case "${1:-}" in
   --setup|--config) setup_config;        exit 0 ;;
-  --login)          do_login;            exit 0 ;;
   --add-source)     do_add_source;       exit 0 ;;
   --remove-source)  do_remove_source;    exit 0 ;;
   -l|--last)        do_last;             exit 0 ;;
