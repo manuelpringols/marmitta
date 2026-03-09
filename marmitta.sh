@@ -39,6 +39,8 @@ MARMITTA_CONFIG_DIR="$HOME/.config/marmitta"
 MARMITTA_CONFIG_FILE="$MARMITTA_CONFIG_DIR/config"
 MARMITTA_SOURCES_FILE="$MARMITTA_CONFIG_DIR/sources"
 MARMITTA_LAST_SCRIPT="$HOME/.marmitta_last_script"
+MARMITTA_HISTORY_FILE="$MARMITTA_CONFIG_DIR/history"
+MARMITTA_HISTORY_MAX=50
 MARMITTA_INSTALL_PATH="/usr/local/bin/marmitta"
 MARMITTA_REPO="manuelpringols/marmitta"
 MARMITTA_RAW="https://raw.githubusercontent.com/${MARMITTA_REPO}/master"
@@ -294,6 +296,99 @@ select_source() {
   CURRENT_SOURCE_BRANCH="${CURRENT_SOURCE_BRANCH:-${DEFAULT_BRANCH}}"
   CURRENT_BASE_URL="https://raw.githubusercontent.com/${CURRENT_SOURCE_REPO}/${CURRENT_SOURCE_BRANCH}"
   CURRENT_API_URL="https://api.github.com/repos/${CURRENT_SOURCE_REPO}/contents"
+}
+
+# ─────────────────────────────────────────────────────────────
+# === HANDLER: REMOVE SOURCE ===
+# ─────────────────────────────────────────────────────────────
+do_remove_source() {
+  local sources
+  sources=$(get_sources)
+  if [[ -z "$sources" ]]; then
+    print_warn "Nessuna source configurata."
+    exit 0
+  fi
+
+  echo -e "\n${CYAN}${BOLD}🗑️  Rimuovi source${RESET}\n"
+
+  local chosen
+  chosen=$(echo "$sources" | \
+    fzf \
+      --height=14 --layout=reverse --border \
+      --prompt="🗑️  Rimuovi > " \
+      --delimiter="|" \
+      --with-nth=1,2 \
+      --preview='echo {} | awk -F"|" '"'"'{printf "Repo:   %s\nBranch: %s", $2, $3}'"'"'' \
+      --preview-window=up:3:wrap \
+      --header="  Seleziona la source da eliminare  [ESC] annulla" \
+      --color=fg:#d6de35,bg:#121212,hl:#5f87af \
+      --color=fg+:#00ffd9,bg+:#5c00e6,hl+:#5fd7ff \
+      --color=pointer:red,header:italic \
+      --ansi)
+
+  [[ -z "$chosen" ]] && print_warn "Annullato." && return 0
+
+  local label repo
+  label=$(echo "$chosen" | cut -d'|' -f1 | xargs)
+  repo=$(echo "$chosen"  | cut -d'|' -f2 | xargs)
+
+  read -rp "$(echo -e "${RED}❓ Eliminare '${label}' (${repo})? [y/N]: ${RESET}")" confirm
+  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    print_warn "Annullato."
+    return 0
+  fi
+
+  # Escapa i caratteri speciali per sed
+  local escaped
+  escaped=$(echo "$chosen" | sed 's/[[\.*^$()+?{|]/\\&/g')
+  sed -i "/^${escaped}$/d" "$MARMITTA_SOURCES_FILE"
+  print_ok "Source '${label}' rimossa."
+}
+
+# ─────────────────────────────────────────────────────────────
+# === HANDLER: FLAT SEARCH ===
+# ─────────────────────────────────────────────────────────────
+do_flat_search() {
+  if [[ -z "$SCRIPT_DESCS" ]]; then
+    print_warn "Nessuna descrizione caricata. Esegui prima: marmitta --gen-desc"
+    exit 1
+  fi
+
+  echo -e "\n${CYAN}${BOLD}🔍 Flat search — tutti gli script${RESET}\n"
+
+  # Costruisci menu: path \t descrizione (filtra righe vuote e commenti)
+  local menu=""
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    local path desc
+    path=$(echo "$line" | awk '{print $1}')
+    desc=$(echo "$line" | sed 's/.*#[[:space:]]*//')
+    [[ -z "$path" ]] && continue
+    menu+="${path}\t${desc}\n"
+  done <<< "$SCRIPT_DESCS"
+
+  if [[ -z "$menu" ]]; then
+    print_warn "Nessuno script trovato nel file descrizioni."
+    exit 1
+  fi
+
+  local chosen_path
+  chosen_path=$(printf "%b" "$menu" | \
+    fzf \
+      --height=22 --layout=reverse --border \
+      --prompt="🔍 Search > " \
+      --delimiter="\t" \
+      --with-nth=1,2 \
+      --preview='echo -e "\033[0;96mℹ️  \033[0m" $(echo {} | cut -f2)' \
+      --preview-window=up:2:wrap \
+      --header="  ${CURRENT_SOURCE_LABEL} — ricerca globale  [ESC] annulla" \
+      --color=fg:#d6de35,bg:#121212,hl:#5f87af \
+      --color=fg+:#00ffd9,bg+:#5c00e6,hl+:#5fd7ff \
+      --color=pointer:green,header:italic \
+      --ansi | cut -f1)
+
+  [[ -z "$chosen_path" ]] && echo -e "${DARK_GRAY}Annullato.${RESET}" && exit 0
+  run_script "$chosen_path"
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -573,10 +668,11 @@ run_script() {
 
   local url_full="${CURRENT_BASE_URL}/${chosen_path}"
   echo "$url_full" > "$MARMITTA_LAST_SCRIPT"
+  _append_history "$url_full"
 
   echo -e "\n${CYAN}📜 Script:${RESET} ${YELLOW}${chosen_path}${RESET}"
   echo -e "${CYAN}🔗 URL:${RESET}    ${DARK_GRAY}${url_full}${RESET}"
-  echo -e "\n${DARK_GRAY}[ ${GREEN}INVIO${DARK_GRAY} ] Esegui   [ ${YELLOW}i${DARK_GRAY} ] Parametri   [ ${RED}q${DARK_GRAY} ] Annulla${RESET}"
+  echo -e "\n${DARK_GRAY}[ ${GREEN}INVIO${DARK_GRAY} ] Esegui   [ ${YELLOW}i${DARK_GRAY} ] Parametri   [ ${CYAN}p${DARK_GRAY} ] Preview   [ ${RED}q${DARK_GRAY} ] Annulla${RESET}"
 
   local key
   read -rsn1 key
@@ -595,6 +691,56 @@ run_script() {
       local exit_code=$?
       rm -f "$tmp"
       _post_run_pause "$exit_code"
+      ;;
+    p|P)
+      while true; do
+        echo -e "\n${CYAN}${BOLD}👁️  Preview:${RESET} ${YELLOW}${chosen_path}${RESET}\n"
+        echo -e "${DARK_GRAY}────────────────────────────────────────────────${RESET}"
+        local tmp_prev
+        tmp_prev=$(mktemp)
+        if curl -fsSL "$url_full" -o "$tmp_prev" 2>/dev/null; then
+          if command -v bat &>/dev/null; then
+            bat --color=always --style=numbers,header --language=bash "$tmp_prev"
+          else
+            cat -n "$tmp_prev"
+          fi
+        else
+          print_err "Download preview fallito."
+        fi
+        rm -f "$tmp_prev"
+        echo -e "\n${DARK_GRAY}────────────────────────────────────────────────${RESET}"
+        echo -e "${DARK_GRAY}[ ${GREEN}INVIO${DARK_GRAY} ] Esegui   [ ${YELLOW}i${DARK_GRAY} ] Parametri   [ ${CYAN}p${DARK_GRAY} ] Preview   [ ${RED}q${DARK_GRAY} ] Annulla${RESET}"
+        local key2
+        read -rsn1 key2
+        case "$key2" in
+          p|P)
+            continue
+            ;;
+          i|I)
+            echo
+            read -rp "$(echo -e "${MAGENTA}⌨️  Argomenti: ${RESET}")" user_args
+            local tmp2
+            tmp2=$(mktemp)
+            curl -fsSL "$url_full" -o "$tmp2" || { print_err "Download fallito."; rm -f "$tmp2"; return 1; }
+            chmod +x "$tmp2"
+            echo -e "${GREEN}▶️  Eseguo:${RESET} ${YELLOW}${chosen_name} ${user_args}${RESET}\n"
+            bash "$tmp2" $user_args
+            local ec2=$?
+            rm -f "$tmp2"
+            _post_run_pause "$ec2"
+            break
+            ;;
+          q|Q)
+            return 1
+            ;;
+          *)
+            echo -e "\n${GREEN}▶️  Eseguo...${RESET}\n"
+            bash <(curl -fsSL "$url_full")
+            _post_run_pause $?
+            break
+            ;;
+        esac
+      done
       ;;
     q|Q)
       return 1   # torna indietro senza uscire
@@ -808,6 +954,8 @@ print_help() {
 
   echo -e "${DARK_GRAY}── Navigazione ───────────────────────────${RESET}"
   _row "${CYAN}-l, --last${RESET}           " "Riesegue l'ultimo script"
+  _row "${CYAN}-H, --history${RESET}        " "Storico esecuzioni con fzf (ultimi ${MARMITTA_HISTORY_MAX})"
+  _row "${CYAN}-s, --search${RESET}         " "Ricerca flat su tutti gli script"
   _row "${MAGENTA}-t, --tree${RESET}           " "Struttura repo (source corrente)"
 
   echo -e "\n${DARK_GRAY}── Aggiornamento ─────────────────────────${RESET}"
@@ -823,6 +971,7 @@ print_help() {
   _row "${PURPLE}--login${RESET}              " "Login Bitwarden + salva GITHUB_TOKEN"
   _row "${YELLOW}--setup, --config${RESET}    " "Riconfigura marmitta (token, branch)"
   _row "${YELLOW}--add-source${RESET}         " "Aggiungi una source (repo GitHub)"
+  _row "${YELLOW}--remove-source${RESET}      " "Rimuovi una source configurata"
   _row "${YELLOW}--gen-desc${RESET}           " "Rigenera cache descrizioni"
 
   echo -e "\n${DARK_GRAY}── Pericoloso ────────────────────────────${RESET}"
@@ -857,6 +1006,53 @@ do_last() {
   [[ -z "$last" ]] && print_err "Nessuno script eseguito precedentemente." && exit 1
   echo -e "${CYAN}▶️  Rieseguo:${RESET} ${YELLOW}${last}${RESET}\n"
   bash <(curl -fsSL "$last")
+}
+
+# ─────────────────────────────────────────────────────────────
+# === HISTORY ===
+# ─────────────────────────────────────────────────────────────
+_append_history() {
+  local url="$1"
+  mkdir -p "$MARMITTA_CONFIG_DIR"
+  local ts
+  ts=$(date '+%Y-%m-%d %H:%M')
+  echo "${ts}	${url}" >> "$MARMITTA_HISTORY_FILE"
+  # Mantieni solo gli ultimi N
+  local tmp
+  tmp=$(mktemp)
+  tail -n "$MARMITTA_HISTORY_MAX" "$MARMITTA_HISTORY_FILE" > "$tmp"
+  mv "$tmp" "$MARMITTA_HISTORY_FILE"
+}
+
+do_history() {
+  if [[ ! -f "$MARMITTA_HISTORY_FILE" ]] || [[ ! -s "$MARMITTA_HISTORY_FILE" ]]; then
+    print_warn "Nessuna esecuzione nella history."
+    exit 0
+  fi
+
+  echo -e "\n${CYAN}${BOLD}📜 History — ultimi script eseguiti${RESET}\n"
+
+  local chosen
+  chosen=$(tac "$MARMITTA_HISTORY_FILE" | \
+    fzf \
+      --height=20 --layout=reverse --border \
+      --prompt="⏱️  History > " \
+      --delimiter="\t" \
+      --with-nth=1,2 \
+      --preview='echo -e "\033[0;96m🔗\033[0m" $(echo {} | cut -f2)' \
+      --preview-window=up:2:wrap \
+      --header="  [INVIO] riesegui   [ESC] annulla" \
+      --color=fg:#d6de35,bg:#121212,hl:#5f87af \
+      --color=fg+:#00ffd9,bg+:#5c00e6,hl+:#5fd7ff \
+      --color=pointer:green,header:italic \
+      --ansi | cut -f2)
+
+  [[ -z "$chosen" ]] && echo -e "${DARK_GRAY}Annullato.${RESET}" && exit 0
+
+  echo -e "${CYAN}▶️  Rieseguo:${RESET} ${YELLOW}${chosen}${RESET}\n"
+  echo "$chosen" > "$MARMITTA_LAST_SCRIPT"
+  _append_history "$chosen"
+  bash <(curl -fsSL "$chosen")
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -951,10 +1147,12 @@ ensure_config
 
 # Flag che richiedono config ma non source
 case "${1:-}" in
-  --setup|--config) setup_config;  exit 0 ;;
-  --login)          do_login;      exit 0 ;;
-  --add-source)     do_add_source; exit 0 ;;
-  -l|--last)        do_last;       exit 0 ;;
+  --setup|--config) setup_config;        exit 0 ;;
+  --login)          do_login;            exit 0 ;;
+  --add-source)     do_add_source;       exit 0 ;;
+  --remove-source)  do_remove_source;    exit 0 ;;
+  -l|--last)        do_last;             exit 0 ;;
+  -H|--history)     do_history;          exit 0 ;;
 esac
 
 # Selezione source (fzf se più d'una, automatica se unica)
@@ -964,6 +1162,7 @@ select_source
 case "${1:-}" in
   -t|--tree)    load_script_descs; print_tree;                  exit 0 ;;
   --gen-desc)   gen_desc;                                        exit 0 ;;
+  -s|--search)  load_script_descs; do_flat_search;              exit 0 ;;
   -py)          shift; call_pitonzi "$@";                        exit 0 ;;
   -Gsp)         shift; do_slither_push "$@";                     exit 0 ;;
 esac
