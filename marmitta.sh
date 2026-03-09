@@ -603,19 +603,20 @@ _banner_glow() {
   local n=${#lines[@]}
   printf "\033[%dA" "$n"
   for line in "${lines[@]}"; do
-    printf "\033[1;97m"
+    printf "\033[1;92m"
     echo -e "$line" | sed 's/\x1b\[[0-9;]*m//g' | tr -d "\n"
     printf "\033[0m\n"
-    sleep 0.015
+    sleep 0.008
   done
   printf "\033[%dA" "$n"
   for line in "${lines[@]}"; do
     echo -e "$line"
-    sleep 0.015
+    sleep 0.008
   done
 }
 
 print_banner() {
+  # Animazione normale: banner in rosso
   local L1="${RED}█▀▄▀█${BLOOD_RED} ██   █▄▄▄▄ ${RED}█▀▄▀█${RESET} ${BLACK_PITCH}▄█${RED}    ▄▄▄▄▀${BLACK_PITCH}    ▄▄▄▄▀ ██${BLACK_PITCH}"
   local L2="${DARK_RED}█ █ █${RED} █ █  █  ▄▀ ${DARK_RED}█ █ █${RED} ██${BLACK_PITCH} ▀▀▀${BLOOD_RED} █${BLACK_PITCH}    ▀▀▀ ${RED}█    █ █${BLOOD_RED}"
   local L3="${RED}█ ▄ █${BLOOD_RED} █▄▄█ █▀▀▌  █ ▄ █${BLACK_PITCH} ██${RED}     █${BLACK_PITCH}        █    █▄▄█${BLOOD_RED}"
@@ -624,15 +625,34 @@ print_banner() {
   local L6="  ${BLOOD_RED}▀     █   ▀      ▀                          ▀${RESET}"
 
   # Typewriter riga per riga
-  _typewriter "$(echo -e "$L1")" 0.007
-  _typewriter "$(echo -e "$L2")" 0.007
-  _typewriter "$(echo -e "$L3")" 0.007
-  _typewriter "$(echo -e "$L4")" 0.007
-  _typewriter "$(echo -e "$L5")" 0.007
-  _typewriter "$(echo -e "$L6")" 0.007
+  _typewriter "$(echo -e "$L1")" 0.003
+  _typewriter "$(echo -e "$L2")" 0.003
+  _typewriter "$(echo -e "$L3")" 0.003
+  _typewriter "$(echo -e "$L4")" 0.003
+  _typewriter "$(echo -e "$L5")" 0.003
+  _typewriter "$(echo -e "$L6")" 0.003
+
+  # Se l'utente ha skippato → ripittura del banner in colore casuale
+  if [[ "$_ANIM_SKIP" -eq 1 ]]; then
+    local _palette=("$RED" "$CYAN" "$MAGENTA" "$GREEN_NEON" "$ORANGE" "$PURPLE" "$BLUE" "$YELLOW")
+    local _C="${_palette[$((RANDOM % ${#_palette[@]}))]}"
+    L1="${_C}█▀▄▀█${BLACK_PITCH} ██   █▄▄▄▄ ${_C}█▀▄▀█${RESET} ${BLACK_PITCH}▄█${_C}    ▄▄▄▄▀${BLACK_PITCH}    ▄▄▄▄▀ ██${BLACK_PITCH}"
+    L2="${_C}█ █ █${BLACK_PITCH} █ █  █  ▄▀ ${_C}█ █ █${BLACK_PITCH} ██${_C} ▀▀▀${BLACK_PITCH} █${_C}    ▀▀▀ ${BLACK_PITCH}█    █ █${_C}"
+    L3="${_C}█ ▄ █${BLACK_PITCH} █▄▄█ █▀▀▌  █ ▄ █${_C} ██${BLACK_PITCH}     █${_C}        █    █▄▄█${BLACK_PITCH}"
+    L4="${_C}█   █${BLACK_PITCH} █  █ █  █  █   █${_C} ▐█${BLACK_PITCH}    █${_C}        █     █  █${RESET}"
+    L5="   ${_C}█     █   █      █   ▐   ▀        ▀         █${RESET}"
+    L6="  ${_C}▀     █   ▀      ▀                          ▀${RESET}"
+    printf "\033[6A"
+    echo -e "$L1"
+    echo -e "$L2"
+    echo -e "$L3"
+    echo -e "$L4"
+    echo -e "$L5"
+    echo -e "$L6"
+  fi
 
   # Glow flash sul banner completo
-  sleep 0.08
+  sleep 0.04
   _banner_glow "$L1" "$L2" "$L3" "$L4" "$L5" "$L6"
 
   echo -e "\n${CYAN}${BOLD}  MARMITTA — Script Launcher 😈${RESET}"
